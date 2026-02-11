@@ -1,0 +1,30 @@
+[
+  {
+    "id": "tok_0001",
+    "orth": "bank",
+    "lemma": "bank",
+    "pos": "NOUN",
+    "senses": [
+      { "id": "bank_financial", "tags": ["finance"] },
+      { "id": "bank_river", "tags": ["geography"] }
+    ]
+  },
+  {
+    "id": "tok_0002",
+    "orth": "run",
+    "lemma": "run",
+    "pos": "VERB",
+    "senses": [
+      { "id": "run_move", "tags": ["motion"] }
+    ]
+  },
+  {
+    "id": "tok_0003",
+    "orth": "the",
+    "lemma": "the",
+    "pos": "DET",
+    "senses": [
+      { "id": "the_def", "tags": ["definite"] }
+    ]
+  }
+]
