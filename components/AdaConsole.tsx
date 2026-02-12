@@ -11,10 +11,10 @@ const AdaConsole: React.FC = () => {
     const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
     const [isThinking, setIsThinking] = useState(false);
     const [complexity, setComplexity] = useState<'ELI5' | 'STANDARD' | 'TECHNICAL'>('STANDARD');
-    const scrollRef = useRef<HTMLDivElement>(null);
+    const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [history, isThinking]);
 
     const handleSend = async () => {
@@ -61,7 +61,7 @@ const AdaConsole: React.FC = () => {
             </div>
 
             {/* Chat Output */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-8 pr-4 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto space-y-8 pr-4 custom-scrollbar">
                 {history.length === 0 && !isThinking && (
                     <div className="h-full flex flex-col items-center justify-center text-slate-800 pointer-events-none select-none">
                         <div className="text-8xl mono font-black opacity-10 mb-4">ADA</div>
@@ -170,6 +170,7 @@ const AdaConsole: React.FC = () => {
                         </div>
                     </div>
                 )}
+                <div ref={bottomRef} />
             </div>
 
             {/* Input Section */}
