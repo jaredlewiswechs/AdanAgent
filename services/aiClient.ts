@@ -2,11 +2,31 @@
 /**
  * Shared AI client — single source of truth for:
  * - extractAIContent (OpenAI JSON unwrapping)
- * - callFreeAI (multi-endpoint with retry + exponential backoff)
+ * - callFreeAI (Puter.js primary → Pollinations fallback)
  * - QueryCache (in-memory LRU cache for identical queries)
  */
 
 import { AI_CONFIG } from '../config';
+
+// ---- Puter.js global type declaration ----
+
+declare global {
+    interface Window {
+        puter?: {
+            ai: {
+                chat(
+                    prompt: string | Array<{ role: string; content: string }>,
+                    options?: { model?: string; stream?: boolean }
+                ): Promise<{
+                    message: {
+                        // OpenAI models return string; Claude models return array
+                        content: string | Array<{ text: string }>;
+                    };
+                }>;
+            };
+        };
+    }
+}
 
 // ---- Response unwrapping ----
 
@@ -83,6 +103,56 @@ export class AIRequestError extends Error {
         this.retryable = status === null || status === 429 || status >= 500;
     }
 }
+
+// ---- Puter.js AI provider ----
+
+/**
+ * Try calling the Puter.js SDK which provides free AI without API keys.
+ * Tries each configured model in order.
+ */
+const tryPuterAI = async (messages: AIMessage[]): Promise<string> => {
+    if (!AI_CONFIG.puter.enabled || !window.puter?.ai) {
+        throw new AIRequestError('Puter.js SDK not available', null);
+    }
+
+    const formattedMessages = messages.map(m => ({
+        role: m.role,
+        content: m.content
+    }));
+
+    for (const model of AI_CONFIG.puter.models) {
+        try {
+            const result = await Promise.race([
+                window.puter.ai.chat(formattedMessages, { model }),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('Puter timeout')), AI_CONFIG.puter.timeoutMs)
+                )
+            ]);
+
+            const raw = result?.message?.content;
+            // Claude models return content as [{text: "..."}], others return a string
+            let content: string | undefined;
+            if (typeof raw === 'string') {
+                content = raw;
+            } else if (Array.isArray(raw) && raw.length > 0 && typeof raw[0]?.text === 'string') {
+                content = raw[0].text;
+            }
+
+            if (content && content.trim()) {
+                return content.trim();
+            }
+            // Empty response — try next model
+        } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            console.warn(`Puter [${model}] failed: ${msg}`);
+            // Try next model
+        }
+    }
+
+    throw new AIRequestError('All Puter.js models failed', null);
+};
+
+// ---- Pollinations fallback providers ----
 
 /**
  * Try a single fetch to a POST endpoint with the given model.
@@ -170,7 +240,23 @@ export const callFreeAI = async (
 
     const errors: string[] = [];
 
-    // Try each configured endpoint with its model list
+    // PRIMARY: Try Puter.js (free, no API key)
+    try {
+        const content = await tryPuterAI(messages);
+
+        if (useCache) {
+            const cacheKey = queryCache.makeKey(messages);
+            queryCache.set(cacheKey, content);
+        }
+
+        return content;
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        errors.push(`Puter.js: ${msg}`);
+        console.warn('Puter.js unavailable, falling back to Pollinations endpoints.', msg);
+    }
+
+    // FALLBACK: Try each configured Pollinations endpoint with its model list
     for (const endpoint of AI_CONFIG.endpoints) {
         for (const model of endpoint.models) {
             for (let attempt = 0; attempt <= AI_CONFIG.retry.maxRetries; attempt++) {

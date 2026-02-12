@@ -6,8 +6,18 @@
 
 export const AI_CONFIG = {
     /**
-     * Ordered list of endpoints to try. Each has a URL, whether it uses
-     * OpenAI-compatible JSON format, and the models to attempt on it.
+     * Primary AI provider: Puter.js (free, no API key, browser-native).
+     * Models to try in order of preference.
+     */
+    puter: {
+        enabled: true,
+        models: ['gpt-4o-mini', 'claude-3-5-haiku-latest'],
+        timeoutMs: 25_000,
+    },
+
+    /**
+     * Fallback endpoints (Pollinations) — used only when Puter.js is
+     * unavailable or all Puter models fail.
      */
     endpoints: [
         {
