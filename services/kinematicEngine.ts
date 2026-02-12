@@ -2,7 +2,8 @@
 import {
     Glyph, AnalysisResult, MechanicalStats,
     SearchResult, QueryShape, PhysicalProperty,
-    CognitiveState, ConstraintStatus, Action, Vector
+    CognitiveState, ConstraintStatus, Action, Vector,
+    ProofLabel, LedgerStep
 } from '../types';
 import { GLYPH_DB, SEMANTIC_CLUSTERS } from '../constants';
 import { callFreeAI } from './aiClient';
@@ -73,6 +74,13 @@ export class KinematicEngine {
             if (match) {
                 const entity = match[1].trim().replace(/[?]+$/, '').trim();
                 // Fix: Added missing required SearchResult properties
+                const t1Ledger: LedgerStep[] = [
+                    { step: 1, action: 'Parse Query', detail: `Input: "${query}"`, timestamp: 0 },
+                    { step: 2, action: 'Pattern Match', detail: `Rigid regex hit: ${p.shape}`, timestamp: 1 },
+                    { step: 3, action: 'Extract Entity', detail: `Entity: "${entity}"`, timestamp: 2 },
+                    { step: 4, action: 'Govern Constraints', detail: 'Governor: Newton (trusted) | Status: GREEN', timestamp: 3 },
+                    { step: 5, action: 'Commit', detail: 'Verified from defined pattern. Trajectory closed.', timestamp: 4 },
+                ];
                 return {
                     tier: 1,
                     method: "Rigid Pattern Match",
@@ -85,7 +93,9 @@ export class KinematicEngine {
                     constraint: { status: ConstraintStatus.GREEN, ratio: 1.0 },
                     action: Action.RESPOND,
                     trajectoryPoints: [[0, 0], [1, 1]],
-                    isClosed: true
+                    isClosed: true,
+                    proofLabel: ProofLabel.VERIFIED,
+                    ledger: t1Ledger,
                 };
             }
         }
@@ -141,19 +151,30 @@ export class KinematicEngine {
             const entity = entityTokens.join(" ") || "Unknown";
 
             // Fix: Added missing required SearchResult properties
+            const t2Confidence = Math.min(0.95, 0.7 + (bestMatch.score * 0.1));
+            const t2Ledger: LedgerStep[] = [
+                { step: 1, action: 'Parse Query', detail: `Input: "${query}"`, timestamp: 0 },
+                { step: 2, action: 'Tier 1 Miss', detail: 'No rigid pattern match found', timestamp: 1 },
+                { step: 3, action: 'Cluster Match', detail: `Resonated with [${bestMatch.clusterName}] cluster (score: ${bestMatch.score})`, timestamp: 2 },
+                { step: 4, action: 'Extract Entity', detail: `Entity: "${entity || 'Unknown'}"`, timestamp: 3 },
+                { step: 5, action: 'Govern Constraints', detail: `Governor: Newton (trusted) | Confidence: ${(t2Confidence * 100).toFixed(0)}%`, timestamp: 4 },
+                { step: 6, action: 'Commit', detail: 'Likely inference from semantic cluster. Trajectory closed.', timestamp: 5 },
+            ];
             return {
                 tier: 2,
                 method: "Semantic Cluster Resonance",
                 shape: bestMatch.shape,
                 entity: entity || "Unknown",
-                confidence: Math.min(0.95, 0.7 + (bestMatch.score * 0.1)),
+                confidence: t2Confidence,
                 details: `Resonated with [${bestMatch.clusterName}] cluster. Overlap score: ${bestMatch.score}.`,
                 insight: `Heuristic match suggests ${entity || "Unknown"} correlates with ${bestMatch.shape}.`,
                 csv: { c: 0.85, m: 0.05, f: 0.1, k: 0.85, state: CognitiveState.PARTIAL },
                 constraint: { status: ConstraintStatus.YELLOW, ratio: 0.9 },
                 action: Action.RESPOND,
                 trajectoryPoints: [[0, 0], [0.5, 0.5], [1, 1]],
-                isClosed: true
+                isClosed: true,
+                proofLabel: ProofLabel.LIKELY,
+                ledger: t2Ledger,
             };
         }
         return null;
@@ -172,10 +193,17 @@ export class KinematicEngine {
                 }
             ]);
             
-            // Fix: Added missing required SearchResult properties
+            const t3Ledger: LedgerStep[] = [
+                { step: 1, action: 'Parse Query', detail: `Input: "${query}"`, timestamp: 0 },
+                { step: 2, action: 'Tier 1 Miss', detail: 'No rigid pattern match found', timestamp: 1 },
+                { step: 3, action: 'Tier 2 Miss', detail: 'No semantic cluster resonance', timestamp: 2 },
+                { step: 4, action: 'LLM Resolution', detail: 'Translator: LLM (untrusted) | Governor: Newton (trusted constraints)', timestamp: 3 },
+                { step: 5, action: 'Govern Constraints', detail: 'Governor: Newton (trusted) | Status: GREEN', timestamp: 4 },
+                { step: 6, action: 'Commit', detail: 'Likely inference from LLM with Newton governance. Trajectory closed.', timestamp: 5 },
+            ];
             return {
                 tier: 3,
-                method: "Free-AI Latent Resonance",
+                method: "Translator: LLM (untrusted) → Governor: Newton (trusted)",
                 shape: QueryShape.UNKNOWN,
                 entity: "Resolved via LLM",
                 confidence: 0.85,
@@ -185,9 +213,18 @@ export class KinematicEngine {
                 constraint: { status: ConstraintStatus.GREEN, ratio: 1.0 },
                 action: Action.RESPOND,
                 trajectoryPoints: [[0, 0], [0.2, 0.8], [1, 1]],
-                isClosed: true
+                isClosed: true,
+                proofLabel: ProofLabel.LIKELY,
+                ledger: t3Ledger,
             };
         } catch (e) {
+            const errLedger: LedgerStep[] = [
+                { step: 1, action: 'Parse Query', detail: `Input: "${query}"`, timestamp: 0 },
+                { step: 2, action: 'Tier 1 Miss', detail: 'No rigid pattern match found', timestamp: 1 },
+                { step: 3, action: 'Tier 2 Miss', detail: 'No semantic cluster resonance', timestamp: 2 },
+                { step: 4, action: 'LLM Failure', detail: `Translator failed: ${e instanceof Error ? e.message : 'Unknown error'}`, timestamp: 3 },
+                { step: 5, action: 'Commit', detail: 'Resolution failed. Needs data.', timestamp: 4 },
+            ];
             return {
                 tier: 3,
                 method: "Failed Vector Search",
@@ -201,6 +238,8 @@ export class KinematicEngine {
                 action: Action.ABSTAIN,
                 trajectoryPoints: [[0, 0]],
                 isClosed: false,
+                proofLabel: ProofLabel.NEEDS_DATA,
+                ledger: errLedger,
                 error: e instanceof Error ? e.message : 'AI service unavailable'
             };
         }

@@ -76,6 +76,32 @@ export enum Action {
     ESCALATE = "ESCALATE"
 }
 
+export enum ProofLabel {
+    VERIFIED = "VERIFIED",
+    LIKELY = "LIKELY",
+    NEEDS_DATA = "NEEDS_DATA"
+}
+
+export interface LedgerStep {
+    step: number;
+    action: string;
+    detail: string;
+    timestamp: number;
+}
+
+export interface ShapeExport {
+    query: string;
+    resolvedShape: string;
+    confidence: number;
+    glyphsUsed: string[];
+    profileVector: MechanicalStats;
+    solverMethod: string;
+    proofLabel: ProofLabel;
+    cognitiveState: CognitiveState;
+    constraintStatus: ConstraintStatus;
+    ledger: LedgerStep[];
+}
+
 export interface GroundingSource {
     uri: string;
     title?: string;
@@ -111,6 +137,12 @@ export interface SearchResult {
     trajectoryPoints: Vector[];
     isClosed: boolean;
     groundingSources?: GroundingSource[];
+    /** Proof governance label: VERIFIED / LIKELY / NEEDS_DATA */
+    proofLabel: ProofLabel;
+    /** Step-by-step ledger of the resolution process */
+    ledger: LedgerStep[];
+    /** Pre-computed glyph analysis for export */
+    glyphAnalysis?: AnalysisResult;
     /** Set when AI fallback was used due to network/API failure */
     error?: string;
 }
