@@ -205,42 +205,32 @@ export class AdaEngine {
         const currentDateString = now.toLocaleString();
         const groundingSources: GroundingSource[] = [];
 
-        const researchPrompt = `Research task for Ada Engine:\nQuery: "${query}"\nDate Context: ${currentDateString}\nSummarize relevant up-to-date facts in 3-5 bullet points.`;
-        let researchSummary = 'No direct research results. Relying on internal 2026-projection manifolds.';
-        try {
-            researchSummary = await callFreeAI([
-                {
-                    role: 'system',
-                    content: 'You are the grounding module. Provide concise factual context. Do not output markdown headings.'
-                },
-                { role: 'user', content: researchPrompt }
-            ]);
-        } catch (error) {
-            console.warn('Grounding request failed, continuing with local context.', error);
-        }
-
-        // STEP 2: EPISTEMIC GOVERNANCE & FLUID RESOLUTION
+        // SINGLE COMBINED CALL: Research + Evaluation merged to avoid
+        // burning rate-limit budget on a separate research request.
+        // The prior two-call pattern caused the evaluation call to fail
+        // after the research call consumed the free-tier quota.
+        const recentHistory = history.slice(-6);
         const prompt = `
             TEMPORAL CONTEXT: ${currentDateString} (Simulated Year: 2026).
             COMPLEXITY LEVEL: ${complexity}.
-            RESEARCH DATA: ${researchSummary}
-            SESSION HISTORY: ${JSON.stringify(history)}
-            
+            SESSION HISTORY: ${JSON.stringify(recentHistory)}
+
             USER INPUT: "${query}"
-            
+
             GOVERNANCE PROTOCOL:
-            1. Evaluate the input for "Signal Dissonance" (Misconceptions).
-            2. If Misconception Probability is high, DO NOT stop or abstain.
-            3. BRIDGE THE GAP: Address the user's premise, explain the shift to the current 2026 reality, and solve the underlying semantic equation.
-            4. If the user asks for synonyms or antonyms, or follows up on a previous point, use the SESSION HISTORY for context.
-            5. For ELI5: Use simple, warm metaphors and clear language.
-            6. For TECHNICAL: Use precise terminology and kinematic references.
-            7. ENTITY EXTRACTION: Preserve the FULL name including all titles, honorifics, suffixes (Jr., Sr., III, PhD, CEO, etc.), and hyphenated components. Never truncate or shorten names.
+            1. First, recall any relevant up-to-date facts about the query topic.
+            2. Evaluate the input for "Signal Dissonance" (Misconceptions).
+            3. If Misconception Probability is high, DO NOT stop or abstain.
+            4. BRIDGE THE GAP: Address the user's premise, explain the shift to the current 2026 reality, and solve the underlying semantic equation.
+            5. If the user asks for synonyms or antonyms, or follows up on a previous point, use the SESSION HISTORY for context.
+            6. For ELI5: Use simple, warm metaphors and clear language.
+            7. For TECHNICAL: Use precise terminology and kinematic references.
+            8. ENTITY EXTRACTION: Preserve the FULL name including all titles, honorifics, suffixes (Jr., Sr., III, PhD, CEO, etc.), and hyphenated components. Never truncate or shorten names.
 
             RESPONSE FORMAT (strict JSON, no code fences, no markdown):
             {
-                "correctness": [0-1],
-                "misconception": [0-1],
+                "correctness": 0.0 to 1.0,
+                "misconception": 0.0 to 1.0,
                 "entity": "Full name with all titles and suffixes preserved",
                 "equation": "e.g. capital(France) = Paris",
                 "response": "Your full response here, addressing misconceptions and solving the query. Plain text only, no markdown.",
@@ -267,12 +257,16 @@ export class AdaEngine {
             console.warn('Evaluation request failed, using deterministic fallback.', error);
             aiError = error instanceof Error ? error.message : 'AI service unavailable';
             const fallbackMisconception = estimateFallbackMisconception(query);
+            const entityWords = query.replace(/[?!.]+$/g, '').split(/\s+/).filter(w =>
+                w.length > 2 && !STOP_WORDS.has(w.toLowerCase())
+            );
+            const fallbackEntity = entityWords.slice(0, 5).join(' ') || 'Signal';
             evalData = normalizeEvaluation({
                 correctness: COGNITIVE_THRESHOLDS.fallbackCorrectness,
                 misconception: fallbackMisconception,
-                entity: query.split(' ').slice(0, 3).join(' ') || 'Signal',
-                equation: `interpret("${query}") = practical_answer`,
-                response: `I could not reach the free AI service right now, but here's a best-effort answer: ${query}. Please retry for a richer grounded response.`,
+                entity: fallbackEntity,
+                equation: `interpret("${fallbackEntity}") = contextual_resolution`,
+                response: `The AI service is temporarily unavailable. Your query about "${fallbackEntity}" was received. Please try again in a moment — the free AI providers may be rate-limited or briefly offline.`,
                 action: 'RESPOND',
                 synonyms: [],
                 antonyms: []
