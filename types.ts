@@ -43,6 +43,14 @@ export enum QueryShape {
     CURRENCY_OF = "currency(X) = ?",
     PHYSICS_LAW = "law(X) = ?",
     ATOMIC_NUMBER = "atomic_num(X) = ?",
+    LEADER_OF = "leader(X) = ?",
+    HISTORY_OF = "history(X) = ?",
+    LOCATION_OF = "location(X) = ?",
+    BIOLOGY_OF = "biology(X) = ?",
+    MATH_OF = "math(X) = ?",
+    DEFINITION_OF = "define(X) = ?",
+    INVENTION_OF = "inventor(X) = ?",
+    COMPOSED_BY = "composer(X) = ?",
     UNKNOWN = "UNKNOWN"
 }
 
