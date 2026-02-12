@@ -17,7 +17,12 @@ declare global {
                 chat(
                     prompt: string | Array<{ role: string; content: string }>,
                     options?: { model?: string; stream?: boolean }
-                ): Promise<{ message: { content: string } }>;
+                ): Promise<{
+                    message: {
+                        // OpenAI models return string; Claude models return array
+                        content: string | Array<{ text: string }>;
+                    };
+                }>;
             };
         };
     }
@@ -124,8 +129,16 @@ const tryPuterAI = async (messages: AIMessage[]): Promise<string> => {
                 )
             ]);
 
-            const content = result?.message?.content;
-            if (content && typeof content === 'string' && content.trim()) {
+            const raw = result?.message?.content;
+            // Claude models return content as [{text: "..."}], others return a string
+            let content: string | undefined;
+            if (typeof raw === 'string') {
+                content = raw;
+            } else if (Array.isArray(raw) && raw.length > 0 && typeof raw[0]?.text === 'string') {
+                content = raw[0].text;
+            }
+
+            if (content && content.trim()) {
                 return content.trim();
             }
             // Empty response — try next model
