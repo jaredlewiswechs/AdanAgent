@@ -5,7 +5,7 @@
  */
 
 export const AI_CONFIG = {
-    pollinationsUrl: 'https://text.pollinations.ai/openai',
+    pollinationsUrl: 'https://gen.pollinations.ai/v1/chat/completions',
 
     retry: {
         maxRetries: 3,          // 4 total attempts (initial + 3 retries)
