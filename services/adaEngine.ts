@@ -16,6 +16,23 @@ type AdaEvaluation = {
     action: string;
 };
 
+const STOP_WORDS = new Set([
+    'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'your', 'about', 'what', 'when', 'where', 'which', 'would',
+    'could', 'should', 'there', 'their', 'have', 'has', 'been', 'were', 'will', 'shall', 'query', 'mode', 'standard', 'eli5',
+    'technical', 'not', 'only', 'works', 'think'
+]);
+
+const LEXICAL_FALLBACKS: Record<string, { synonyms: string[]; antonyms: string[] }> = {
+    simple: { synonyms: ['clear', 'easy', 'plain', 'friendly'], antonyms: ['complex', 'technical', 'dense', 'complicated'] },
+    explain: { synonyms: ['clarify', 'describe', 'break down', 'unpack'], antonyms: ['confuse', 'obscure', 'complicate', 'muddy'] },
+    deterministic: { synonyms: ['certain', 'predictable', 'fixed', 'verifiable'], antonyms: ['random', 'probabilistic', 'uncertain', 'speculative'] },
+    verification: { synonyms: ['validation', 'proof', 'confirmation', 'audit'], antonyms: ['guessing', 'assumption', 'speculation', 'doubt'] },
+    truth: { synonyms: ['fact', 'accuracy', 'reality', 'validity'], antonyms: ['falsehood', 'error', 'fiction', 'inaccuracy'] },
+    standard: { synonyms: ['default', 'normal', 'baseline', 'regular'], antonyms: ['exception', 'custom', 'advanced', 'nonstandard'] },
+    eli5: { synonyms: ['simple', 'kid-friendly', 'plain-language', 'easy'], antonyms: ['technical', 'jargon-heavy', 'advanced', 'complex'] },
+    technical: { synonyms: ['specialized', 'precise', 'formal', 'detailed'], antonyms: ['simple', 'casual', 'plain', 'nontechnical'] }
+};
+
 const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
@@ -68,6 +85,56 @@ const normalizeEvaluation = (result: Partial<AdaEvaluation>, query: string): Ada
     antonyms: Array.isArray(result.antonyms) ? result.antonyms.slice(0, 8).map(String) : [],
     action: String(result.action ?? 'RESPOND')
 });
+
+const unique = (items: string[]) => [...new Set(items.map(item => item.trim()).filter(Boolean))];
+
+const extractLexicalKeywords = (query: string): string[] =>
+    query
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .split(/\s+/)
+        .map(word => word.trim())
+        .filter(word => word.length > 2 && !STOP_WORDS.has(word));
+
+const mergeLexicalCoverage = (query: string, synonyms: string[], antonyms: string[]) => {
+    const keywords = extractLexicalKeywords(query);
+    const fallbackSynonyms: string[] = [];
+    const fallbackAntonyms: string[] = [];
+
+    for (const keyword of keywords) {
+        const preset = LEXICAL_FALLBACKS[keyword];
+        if (!preset) continue;
+        fallbackSynonyms.push(...preset.synonyms);
+        fallbackAntonyms.push(...preset.antonyms);
+    }
+
+    if (/synonym/i.test(query) && fallbackSynonyms.length === 0) {
+        fallbackSynonyms.push('equivalent', 'alternate term', 'parallel wording');
+    }
+    if (/antonym|opposite|contrast/i.test(query) && fallbackAntonyms.length === 0) {
+        fallbackAntonyms.push('opposite', 'inverse term', 'counter meaning');
+    }
+
+    return {
+        synonyms: unique([...synonyms, ...fallbackSynonyms]).slice(0, 8),
+        antonyms: unique([...antonyms, ...fallbackAntonyms]).slice(0, 8)
+    };
+};
+
+const eli5Rewrite = (text: string, entity: string) => {
+    const base = text.trim();
+    if (!base) return `Think of ${entity || 'this'} like a simple puzzle: each piece must fit the facts before we answer.`;
+
+    const rewritten = base
+        .replace(/deterministic/gi, 'certain')
+        .replace(/probabilistic/gi, 'guess-based')
+        .replace(/epistemic/gi, 'truth-checking')
+        .replace(/semantic/gi, 'meaning')
+        .replace(/manifold/gi, 'map')
+        .replace(/trajectory/gi, 'path');
+
+    return rewritten.startsWith('Simple take:') ? rewritten : `Simple take: ${rewritten}`;
+};
 
 const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => {
     const response = await fetch(POLLINATIONS_URL, {
@@ -227,6 +294,11 @@ export class AdaEngine {
         const trajectoryPoints: Vector[] = [];
         for (let i = 0; i <= 20; i++) trajectoryPoints.push(bezier.evaluate(i / 20));
 
+        const lexical = mergeLexicalCoverage(query, evalData.synonyms, evalData.antonyms);
+        const governedResponse = complexity === 'ELI5'
+            ? eli5Rewrite(evalData.response, evalData.entity)
+            : evalData.response;
+
         return {
             tier: 3,
             method: "Ada Fluid-Manifold Governance",
@@ -234,10 +306,10 @@ export class AdaEngine {
             entity: evalData.entity,
             confidence: c,
             details: `Epistemic Resolution: ${state}. Complexity: ${complexity}.`,
-            geminiInsight: evalData.response,
+            geminiInsight: governedResponse,
             lexical: {
-                synonyms: evalData.synonyms,
-                antonyms: evalData.antonyms,
+                synonyms: lexical.synonyms,
+                antonyms: lexical.antonyms,
                 equation: evalData.equation
             },
             csv: { c, m, f, k, state },
