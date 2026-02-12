@@ -18,13 +18,26 @@ export const AI_CONFIG = {
     /**
      * Fallback endpoints (Pollinations) — used only when Puter.js is
      * unavailable or all Puter models fail.
+     *
+     * In dev mode, requests are proxied through the Vite dev server
+     * (see vite.config.ts) to bypass browser CORS and proxy/firewall
+     * restrictions. The proxied path /api/ai/pollinations/* forwards
+     * to gen.pollinations.ai/*.
      */
     endpoints: [
         {
-            url: 'https://text.pollinations.ai/',
+            url: '/api/ai/pollinations/v1/chat/completions',
             openaiFormat: true,
             models: ['openai', 'mistral', 'openai-large'],
         },
+    ] as const,
+
+    /**
+     * Direct (non-proxied) endpoints used as last-resort fallback
+     * if the proxied endpoints also fail (e.g. in production builds
+     * without the Vite proxy).
+     */
+    directEndpoints: [
         {
             url: 'https://gen.pollinations.ai/v1/chat/completions',
             openaiFormat: true,
@@ -32,13 +45,13 @@ export const AI_CONFIG = {
         },
     ] as const,
 
-    /** Simple GET-based fallback: text.pollinations.ai/{prompt} */
-    textFallbackUrl: 'https://text.pollinations.ai/',
+    /** GET-based fallback: proxied through Vite dev server */
+    textFallbackUrl: '/api/ai/pollinations/text/',
 
     retry: {
-        maxRetries: 2,          // 3 total attempts per endpoint (initial + 2 retries)
-        baseDelayMs: 800,       // 0.8s, 1.6s backoff
-        timeoutMs: 20_000,      // 20s per-request timeout
+        maxRetries: 3,          // 4 total attempts per endpoint (initial + 3 retries)
+        baseDelayMs: 1200,      // 1.2s, 2.4s, 4.8s backoff
+        timeoutMs: 30_000,      // 30s per-request timeout
     },
 
     cache: {

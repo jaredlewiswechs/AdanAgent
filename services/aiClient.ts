@@ -193,7 +193,7 @@ const tryPostEndpoint = async (
 };
 
 /**
- * Last-resort GET-based fallback using text.pollinations.ai/{prompt}.
+ * Last-resort GET-based fallback using gen.pollinations.ai/text/{prompt}.
  * Combines all messages into a single prompt string.
  */
 const tryGetFallback = async (
@@ -235,6 +235,56 @@ const tryGetFallback = async (
     return content;
 };
 
+/**
+ * Additional GET-based fallback using text.pollinations.ai/{prompt}
+ * via the Vite proxy (/api/ai/text-pollinations/).
+ * Used as a last-ditch attempt when all other providers fail.
+ */
+const tryLegacyGetFallback = async (
+    messages: AIMessage[],
+    signal: AbortSignal
+): Promise<string> => {
+    const MAX_PROMPT_CHARS = 1200;
+    const lastUser = [...messages].reverse().find(m => m.role === 'user');
+    const prompt = lastUser
+        ? lastUser.content.slice(0, MAX_PROMPT_CHARS)
+        : messages.map(m => m.content).join(' ').slice(0, MAX_PROMPT_CHARS);
+
+    const encoded = encodeURIComponent(prompt);
+    // Try proxied path first, fall back to direct URL
+    const urls = [
+        `/api/ai/text-pollinations/${encoded}?model=openai&json=true`,
+        `https://text.pollinations.ai/${encoded}?model=openai&json=true`,
+    ];
+
+    for (const url of urls) {
+        try {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Accept': 'text/plain, application/json, */*' },
+                signal,
+            });
+
+            if (!response.ok) {
+                throw new AIRequestError(
+                    `Legacy GET fallback failed: ${response.status} ${response.statusText}`,
+                    response.status
+                );
+            }
+
+            const raw = await response.text();
+            const content = extractAIContent(raw);
+            if (!content) throw new AIRequestError('Empty response from legacy GET fallback', null);
+            return content;
+        } catch (error) {
+            if (url === urls[urls.length - 1]) throw error;
+            // Try next URL
+        }
+    }
+
+    throw new AIRequestError('All legacy GET fallback URLs failed', null);
+};
+
 export const callFreeAI = async (
     messages: AIMessage[],
     useCache = true
@@ -264,8 +314,15 @@ export const callFreeAI = async (
         console.warn('Puter.js unavailable, falling back to Pollinations endpoints.', msg);
     }
 
-    // FALLBACK: Try each configured Pollinations endpoint with its model list
-    for (const endpoint of AI_CONFIG.endpoints) {
+    // FALLBACK: Try proxied endpoints first, then direct endpoints.
+    // Proxied endpoints go through the Vite dev server to bypass
+    // browser CORS restrictions and corporate proxy/firewall blocks.
+    const allEndpoints = [
+        ...AI_CONFIG.endpoints.map(e => ({ ...e, label: 'proxied' })),
+        ...AI_CONFIG.directEndpoints.map(e => ({ ...e, label: 'direct' })),
+    ];
+
+    for (const endpoint of allEndpoints) {
         for (const model of endpoint.models) {
             for (let attempt = 0; attempt <= AI_CONFIG.retry.maxRetries; attempt++) {
                 if (attempt > 0) {
@@ -300,11 +357,11 @@ export const callFreeAI = async (
 
                     // Non-retryable 4xx (except 429) → skip to next model
                     if (!err.retryable) {
-                        errors.push(`${endpoint.url} [${model}]: ${err.message}`);
+                        errors.push(`${endpoint.url} (${endpoint.label}) [${model}]: ${err.message}`);
                         break;
                     }
 
-                    errors.push(`${endpoint.url} [${model}] attempt ${attempt + 1}: ${err.message}`);
+                    errors.push(`${endpoint.url} (${endpoint.label}) [${model}] attempt ${attempt + 1}: ${err.message}`);
                     // On last retry for this model, move to next
                     if (attempt === AI_CONFIG.retry.maxRetries) break;
                 }
@@ -312,22 +369,32 @@ export const callFreeAI = async (
         }
     }
 
-    // Last resort: simple GET-based text endpoint
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), AI_CONFIG.retry.timeoutMs);
-        const content = await tryGetFallback(messages, controller.signal);
-        clearTimeout(timeoutId);
+    // Last resort: GET-based text endpoints with retry
+    const getFallbacks = [
+        { name: 'GET fallback', fn: tryGetFallback },
+        { name: 'Legacy GET fallback', fn: tryLegacyGetFallback },
+    ];
 
-        if (useCache) {
-            const cacheKey = queryCache.makeKey(messages);
-            queryCache.set(cacheKey, content);
+    for (const { name, fn } of getFallbacks) {
+        for (let attempt = 0; attempt <= 1; attempt++) {
+            if (attempt > 0) await sleep(AI_CONFIG.retry.baseDelayMs);
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), AI_CONFIG.retry.timeoutMs);
+                const content = await fn(messages, controller.signal);
+                clearTimeout(timeoutId);
+
+                if (useCache) {
+                    const cacheKey = queryCache.makeKey(messages);
+                    queryCache.set(cacheKey, content);
+                }
+
+                return content;
+            } catch (error) {
+                const msg = error instanceof Error ? error.message : String(error);
+                errors.push(`${name} attempt ${attempt + 1}: ${msg}`);
+            }
         }
-
-        return content;
-    } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        errors.push(`GET fallback: ${msg}`);
     }
 
     throw new AIRequestError(
