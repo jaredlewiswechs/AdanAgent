@@ -38,7 +38,7 @@ const parseJsonBlock = <T>(raw: string): T | null => {
 const normalizeEvaluation = (result: Partial<AdaEvaluation>, query: string): AdaEvaluation => ({
     correctness: clamp(Number(result.correctness ?? 0.65)),
     misconception: clamp(Number(result.misconception ?? 0.2)),
-    entity: String(result.entity ?? query.slice(0, 48) || 'Signal'),
+    entity: String(result.entity ?? (query.slice(0, 48) || 'Signal')),
     equation: String(result.equation ?? `meaning("${query}") = contextual_resolution`),
     response: String(result.response ?? 'I resolved your query using the available context.'),
     synonyms: Array.isArray(result.synonyms) ? result.synonyms.slice(0, 8).map(String) : [],
