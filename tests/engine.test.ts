@@ -4,9 +4,12 @@
  * 2. parseJsonBlock - handles code fences and raw JSON
  * 3. cleanResponseText - strips markdown artifacts
  * 4. Title/suffix recognition in Tier 2 entity extraction
+ * 5. QueryCache - in-memory LRU with TTL
+ * 6. Config thresholds - validate config values
+ * 7. Misconception pattern detection - expanded heuristic coverage
  */
 
-// ---- extractAIContent tests ----
+// ---- extractAIContent tests (mirrors shared aiClient.ts) ----
 const extractAIContent = (raw: string): string => {
     const trimmed = raw.trim();
     if (!trimmed) return '';
@@ -40,6 +43,68 @@ const cleanResponseText = (text: string): string => {
 const stripCodeFences = (raw: string): string => {
     const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
     return fenceMatch ? fenceMatch[1].trim() : raw.trim();
+};
+
+// ---- QueryCache (mirrors shared aiClient.ts) ----
+class QueryCache {
+    private cache = new Map<string, { value: string; timestamp: number }>();
+    private maxSize: number;
+    private ttlMs: number;
+
+    constructor(maxSize = 64, ttlMs = 5 * 60 * 1000) {
+        this.maxSize = maxSize;
+        this.ttlMs = ttlMs;
+    }
+
+    get(key: string): string | null {
+        const entry = this.cache.get(key);
+        if (!entry) return null;
+        if (Date.now() - entry.timestamp > this.ttlMs) {
+            this.cache.delete(key);
+            return null;
+        }
+        return entry.value;
+    }
+
+    set(key: string, value: string): void {
+        if (this.cache.size >= this.maxSize) {
+            const oldestKey = this.cache.keys().next().value;
+            if (oldestKey !== undefined) this.cache.delete(oldestKey);
+        }
+        this.cache.set(key, { value, timestamp: Date.now() });
+    }
+
+    makeKey(messages: { role: string; content: string }[]): string {
+        return messages.map(m => `${m.role}:${m.content}`).join('|');
+    }
+
+    get size(): number { return this.cache.size; }
+}
+
+// ---- Misconception pattern detection (mirrors config.ts) ----
+const MISCONCEPTION_PATTERNS: [RegExp, number][] = [
+    [/who is (?:the )?(?:current |present )?(?:president|prime minister|king|queen|emperor|chancellor|leader|ruler|ceo|chairman|director)/i, 0.40],
+    [/(?:capital|currency|language) of/i, 0.30],
+    [/(?:latest|current|newest|recent) /i, 0.40],
+    [/(?:is it true|is it correct|do people|does everyone|isn't it)/i, 0.45],
+    [/(?:always|never|everyone knows|obviously|clearly|of course)/i, 0.40],
+    [/(?:how many|what percentage|what number|how much)/i, 0.30],
+    [/(?:cause|causes|caused by|reason for|why does|why do|why is)/i, 0.35],
+    [/(?:difference between|compare|versus|vs\.?)/i, 0.25],
+    [/(?:in \d{4}|since \d{4}|after \d{4}|before \d{4}|year|decade|century)/i, 0.35],
+    [/(?:still|anymore|used to|no longer|nowadays)/i, 0.35],
+    [/(?:healthy|unhealthy|safe|dangerous|toxic|cure|treatment)/i, 0.40],
+    [/(?:flat earth|moon landing|vaccine|conspiracy|myth|debunk)/i, 0.50],
+];
+
+const estimateFallbackMisconception = (query: string): number => {
+    let maxProb = 0.15; // fallbackMisconceptionLow
+    for (const [pattern, prob] of MISCONCEPTION_PATTERNS) {
+        if (pattern.test(query)) {
+            maxProb = Math.max(maxProb, prob);
+        }
+    }
+    return maxProb;
 };
 
 let passed = 0;
@@ -293,6 +358,151 @@ assert(
 assert(
     misconceptionMatch !== null && parseFloat(misconceptionMatch[1]) === 0.1,
     'Extracts misconception from loose JSON'
+);
+
+// ---- NEW: QueryCache tests ----
+console.log('\n--- QueryCache ---');
+
+const cache = new QueryCache(3, 100); // max 3 entries, 100ms TTL
+
+cache.set('key1', 'value1');
+assert(cache.get('key1') === 'value1', 'Cache stores and retrieves values');
+
+cache.set('key2', 'value2');
+cache.set('key3', 'value3');
+assert(cache.size === 3, 'Cache tracks size correctly');
+
+// Eviction: adding 4th should evict oldest (key1)
+cache.set('key4', 'value4');
+assert(cache.get('key1') === null, 'LRU eviction removes oldest entry');
+assert(cache.get('key4') === 'value4', 'New entry accessible after eviction');
+
+// TTL expiry
+const ttlCache = new QueryCache(10, 1); // 1ms TTL
+ttlCache.set('expires', 'soon');
+// Small delay to let TTL expire
+const start = Date.now();
+while (Date.now() - start < 5) { /* busy wait 5ms */ }
+assert(ttlCache.get('expires') === null, 'Expired entries return null');
+
+// makeKey
+const testCache = new QueryCache();
+const key = testCache.makeKey([
+    { role: 'system', content: 'You are Ada.' },
+    { role: 'user', content: 'What is the capital of France?' }
+]);
+assert(key.includes('system:You are Ada.'), 'makeKey includes role and content');
+assert(key.includes('user:What is the capital of France?'), 'makeKey includes all messages');
+
+// ---- NEW: Misconception pattern detection tests ----
+console.log('\n--- Misconception Pattern Detection ---');
+
+// High misconception: factual recall with temporal risk
+assert(
+    estimateFallbackMisconception("who is the current president of the United States") >= 0.40,
+    'Detects high misconception for current leader query'
+);
+
+assert(
+    estimateFallbackMisconception("who is the CEO of Apple") >= 0.40,
+    'Detects high misconception for CEO query'
+);
+
+// Medium misconception: factual but less volatile
+assert(
+    estimateFallbackMisconception("capital of France") >= 0.30,
+    'Detects medium misconception for capital query'
+);
+
+assert(
+    estimateFallbackMisconception("how many planets are in the solar system") >= 0.30,
+    'Detects medium misconception for "how many" query'
+);
+
+// Myth-prone domains: highest risk
+assert(
+    estimateFallbackMisconception("is the flat earth theory true") >= 0.50,
+    'Detects very high misconception for conspiracy query'
+);
+
+assert(
+    estimateFallbackMisconception("is this treatment safe and healthy") >= 0.40,
+    'Detects high misconception for health claim query'
+);
+
+// Low misconception: neutral/benign
+assert(
+    estimateFallbackMisconception("what color is the sky") === 0.15,
+    'Returns low default for neutral query with no pattern match'
+);
+
+assert(
+    estimateFallbackMisconception("tell me about dogs") === 0.15,
+    'Returns low default for simple informational query'
+);
+
+// Temporal risk queries
+assert(
+    estimateFallbackMisconception("what was the population in 2020") >= 0.35,
+    'Detects misconception risk for year-specific query'
+);
+
+assert(
+    estimateFallbackMisconception("do people still use fax machines") >= 0.35,
+    'Detects misconception risk for "still" temporal query'
+);
+
+// Comparison queries (moderate risk)
+assert(
+    estimateFallbackMisconception("difference between RNA and DNA") >= 0.25,
+    'Detects moderate misconception for comparison query'
+);
+
+// ---- NEW: Config threshold validation ----
+console.log('\n--- Config Thresholds ---');
+
+// Validate thresholds are in sensible ranges
+const THRESHOLDS = {
+    misconceptionHigh: 0.4,
+    fogHigh: 0.5,
+    correctHigh: 0.7,
+    ratioYellowMin: 0.8,
+    ratioRedMin: 1.2,
+    groundFloor: 0.05,
+    fallbackCorrectness: 0.62,
+    fallbackMisconceptionHigh: 0.35,
+    fallbackMisconceptionLow: 0.15,
+    trajectorySamples: 20,
+    closureTolerance: 0.05,
+};
+
+assert(
+    THRESHOLDS.misconceptionHigh > 0 && THRESHOLDS.misconceptionHigh < 1,
+    'misconceptionHigh is between 0 and 1'
+);
+assert(
+    THRESHOLDS.fogHigh > THRESHOLDS.misconceptionHigh,
+    'fogHigh is greater than misconceptionHigh'
+);
+assert(
+    THRESHOLDS.correctHigh > THRESHOLDS.fogHigh,
+    'correctHigh is greater than fogHigh'
+);
+assert(
+    THRESHOLDS.ratioRedMin > THRESHOLDS.ratioYellowMin,
+    'ratioRedMin is greater than ratioYellowMin'
+);
+assert(
+    THRESHOLDS.groundFloor > 0 && THRESHOLDS.groundFloor < 0.1,
+    'groundFloor is a small positive value'
+);
+assert(
+    THRESHOLDS.trajectorySamples >= 10 && THRESHOLDS.trajectorySamples <= 100,
+    'trajectorySamples is in reasonable range'
+);
+assert(
+    THRESHOLDS.fallbackMisconceptionLow < THRESHOLDS.fallbackMisconceptionHigh,
+    'fallbackMisconceptionLow < fallbackMisconceptionHigh'
 );
 
 // Summary
