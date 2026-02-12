@@ -30,19 +30,57 @@ declare global {
 
 // ---- Response unwrapping ----
 
+const extractTextFromUnknown = (value: unknown): string => {
+    if (typeof value === 'string') return value;
+
+    if (Array.isArray(value)) {
+        const parts = value
+            .map(item => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item === 'object') {
+                    const textCandidate = (item as { text?: unknown; content?: unknown }).text
+                        ?? (item as { text?: unknown; content?: unknown }).content;
+                    return extractTextFromUnknown(textCandidate);
+                }
+                return '';
+            })
+            .filter(Boolean);
+        return parts.join('\n').trim();
+    }
+
+    if (value && typeof value === 'object') {
+        const candidate = value as {
+            text?: unknown;
+            content?: unknown;
+            message?: { content?: unknown; text?: unknown };
+            choices?: Array<{ message?: { content?: unknown; text?: unknown }; text?: unknown }>;
+        };
+
+        if (candidate.choices?.[0]) {
+            const choice = candidate.choices[0];
+            return extractTextFromUnknown(choice.message?.content ?? choice.message?.text ?? choice.text);
+        }
+
+        return extractTextFromUnknown(candidate.message?.content ?? candidate.message?.text ?? candidate.content ?? candidate.text);
+    }
+
+    return '';
+};
+
 export const extractAIContent = (raw: string): string => {
     const trimmed = raw.trim();
     if (!trimmed) return '';
-    if (trimmed.startsWith('{')) {
+
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         try {
             const parsed = JSON.parse(trimmed);
-            if (parsed.choices?.[0]?.message?.content) {
-                return parsed.choices[0].message.content;
-            }
-            if (typeof parsed.content === 'string') return parsed.content;
-            if (typeof parsed.text === 'string') return parsed.text;
-        } catch { /* not JSON wrapper, return as-is */ }
+            const extracted = extractTextFromUnknown(parsed).trim();
+            if (extracted) return extracted;
+        } catch {
+            // Not JSON wrapper, return as-is.
+        }
     }
+
     return trimmed;
 };
 

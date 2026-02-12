@@ -10,19 +10,56 @@
  */
 
 // ---- extractAIContent tests (mirrors shared aiClient.ts) ----
+const extractTextFromUnknown = (value: unknown): string => {
+    if (typeof value === 'string') return value;
+
+    if (Array.isArray(value)) {
+        return value
+            .map(item => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item === 'object') {
+                    const textCandidate = (item as { text?: unknown; content?: unknown }).text
+                        ?? (item as { text?: unknown; content?: unknown }).content;
+                    return extractTextFromUnknown(textCandidate);
+                }
+                return '';
+            })
+            .filter(Boolean)
+            .join('\n')
+            .trim();
+    }
+
+    if (value && typeof value === 'object') {
+        const candidate = value as {
+            text?: unknown;
+            content?: unknown;
+            message?: { content?: unknown; text?: unknown };
+            choices?: Array<{ message?: { content?: unknown; text?: unknown }; text?: unknown }>;
+        };
+
+        if (candidate.choices?.[0]) {
+            const choice = candidate.choices[0];
+            return extractTextFromUnknown(choice.message?.content ?? choice.message?.text ?? choice.text);
+        }
+
+        return extractTextFromUnknown(candidate.message?.content ?? candidate.message?.text ?? candidate.content ?? candidate.text);
+    }
+
+    return '';
+};
+
 const extractAIContent = (raw: string): string => {
     const trimmed = raw.trim();
     if (!trimmed) return '';
-    if (trimmed.startsWith('{')) {
+
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         try {
             const parsed = JSON.parse(trimmed);
-            if (parsed.choices?.[0]?.message?.content) {
-                return parsed.choices[0].message.content;
-            }
-            if (typeof parsed.content === 'string') return parsed.content;
-            if (typeof parsed.text === 'string') return parsed.text;
+            const extracted = extractTextFromUnknown(parsed).trim();
+            if (extracted) return extracted;
         } catch { /* not JSON wrapper */ }
     }
+
     return trimmed;
 };
 
@@ -151,6 +188,16 @@ assert(
 assert(
     extractAIContent('  {"choices":[{"message":{"content":"trimmed"}}]}  ') === 'trimmed',
     'Trims whitespace around JSON'
+);
+
+assert(
+    extractAIContent('{"choices":[{"message":{"content":[{"text":"From array block"}]}}]}') === 'From array block',
+    'Extracts text from content arrays'
+);
+
+assert(
+    extractAIContent('{"content":[{"text":"Line one"},{"text":"Line two"}]}') === 'Line one\nLine two',
+    'Extracts and joins multiple text blocks'
 );
 
 // Test cleanResponseText
