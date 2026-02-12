@@ -1,10 +1,69 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { 
     Scalar, Vector, CognitiveState, ConstraintStatus, Action, 
     SearchResult, PhysicalProperty, GroundingSource, ChatMessage
 } from '../types';
 import { WordMechanics } from './kinematicEngine';
+
+type AdaEvaluation = {
+    correctness: number;
+    misconception: number;
+    entity: string;
+    equation: string;
+    response: string;
+    synonyms: string[];
+    antonyms: string[];
+    action: string;
+};
+
+const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
+
+const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
+
+const parseJsonBlock = <T>(raw: string): T | null => {
+    const cleaned = raw.trim();
+    try {
+        return JSON.parse(cleaned) as T;
+    } catch {
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (!match) return null;
+        try {
+            return JSON.parse(match[0]) as T;
+        } catch {
+            return null;
+        }
+    }
+};
+
+const normalizeEvaluation = (result: Partial<AdaEvaluation>, query: string): AdaEvaluation => ({
+    correctness: clamp(Number(result.correctness ?? 0.65)),
+    misconception: clamp(Number(result.misconception ?? 0.2)),
+    entity: String(result.entity ?? query.slice(0, 48) || 'Signal'),
+    equation: String(result.equation ?? `meaning("${query}") = contextual_resolution`),
+    response: String(result.response ?? 'I resolved your query using the available context.'),
+    synonyms: Array.isArray(result.synonyms) ? result.synonyms.slice(0, 8).map(String) : [],
+    antonyms: Array.isArray(result.antonyms) ? result.antonyms.slice(0, 8).map(String) : [],
+    action: String(result.action ?? 'RESPOND')
+});
+
+const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => {
+    const response = await fetch(POLLINATIONS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: 'openai',
+            messages,
+            temperature: 0.2,
+            private: false
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(`Free AI request failed: ${response.status}`);
+    }
+
+    return response.text();
+};
 
 const Vec = {
     add: (v1: Vector, v2: Vector): Vector => v1.map((val, i) => val + (v2[i] || 0)),
@@ -41,29 +100,23 @@ export class AdaEngine {
         history: ChatMessage[], 
         complexity: 'ELI5' | 'STANDARD' | 'TECHNICAL' = 'STANDARD'
     ): Promise<SearchResult> {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const now = new Date();
         const currentDateString = now.toLocaleString();
-        
-        // STEP 1: RESEARCH & GROUNDING (Always verify current state)
-        const researchResponse = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Research task for Ada Engine: 
-            Query: "${query}". 
-            Context: Current real-world date is ${currentDateString}. Operating in a simulated 2026 environment. 
-            Identify current news, status of people, scientific facts, and political leaders. 
-            If the user has a misconception (e.g. referencing an old leader), find the current 2026 equivalent or the fact that corrects it.`,
-            config: {
-                tools: [{ googleSearch: {} }],
-                systemInstruction: "You are the grounding module. Fetch up-to-date data. If a user's premise is outdated or wrong, find the correct current data to bridge the gap."
-            }
-        });
-
-        const researchSummary = researchResponse.text || "No direct research results. Relying on internal 2026-projection manifolds.";
         const groundingSources: GroundingSource[] = [];
-        researchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks?.forEach((chunk: any) => {
-            if (chunk.web) groundingSources.push({ uri: chunk.web.uri, title: chunk.web.title });
-        });
+
+        const researchPrompt = `Research task for Ada Engine:\nQuery: "${query}"\nDate Context: ${currentDateString}\nSummarize relevant up-to-date facts in 3-5 bullet points.`;
+        let researchSummary = 'No direct research results. Relying on internal 2026-projection manifolds.';
+        try {
+            researchSummary = await callFreeAI([
+                {
+                    role: 'system',
+                    content: 'You are the grounding module. Provide concise factual context. Do not output markdown headings.'
+                },
+                { role: 'user', content: researchPrompt }
+            ]);
+        } catch (error) {
+            console.warn('Grounding request failed, continuing with local context.', error);
+        }
 
         // STEP 2: EPISTEMIC GOVERNANCE & FLUID RESOLUTION
         const prompt = `
@@ -95,30 +148,31 @@ export class AdaEngine {
             }
         `;
 
-        const evaluationResponse = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        correctness: { type: Type.NUMBER },
-                        misconception: { type: Type.NUMBER },
-                        entity: { type: Type.STRING },
-                        equation: { type: Type.STRING },
-                        response: { type: Type.STRING },
-                        synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        antonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        action: { type: Type.STRING }
-                    },
-                    required: ["correctness", "misconception", "entity", "equation", "response", "synonyms", "antonyms", "action"]
+        let evalData: AdaEvaluation = normalizeEvaluation({}, query);
+        try {
+            const evaluationResponse = await callFreeAI([
+                {
+                    role: 'system',
+                    content: 'You are Ada. Return strict JSON only, no code fences. Keep values concise and grounded.'
                 },
-                systemInstruction: `You are Ada. You solve semantic equations. Never stop at an error; always resolve the signal into a truthful trajectory. Current Date Context: 2026.`
-            }
-        });
-
-        const evalData = JSON.parse(evaluationResponse.text || "{}");
+                { role: 'user', content: prompt }
+            ]);
+            const parsed = parseJsonBlock<Partial<AdaEvaluation>>(evaluationResponse);
+            evalData = normalizeEvaluation(parsed ?? {}, query);
+        } catch (error) {
+            console.warn('Evaluation request failed, using deterministic fallback.', error);
+            const fallbackMisconception = /who is|capital|president|prime minister|ceo|latest|current/i.test(query) ? 0.35 : 0.15;
+            evalData = normalizeEvaluation({
+                correctness: 0.62,
+                misconception: fallbackMisconception,
+                entity: query.split(' ').slice(0, 3).join(' ') || 'Signal',
+                equation: `interpret("${query}") = practical_answer`,
+                response: `I could not reach the free AI service right now, but here's a best-effort answer: ${query}. Please retry for a richer grounded response.`,
+                action: 'RESPOND',
+                synonyms: [],
+                antonyms: []
+            }, query);
+        }
         const c = evalData.correctness;
         const m = evalData.misconception;
         const k = Math.max(c, m);
