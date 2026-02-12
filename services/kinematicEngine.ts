@@ -89,7 +89,20 @@ export class KinematicEngine {
             { regex: /who founded (.+)/i, shape: QueryShape.FOUNDER_OF },
             { regex: /population of (.+)/i, shape: QueryShape.POPULATION_OF },
             { regex: /atomic number of (.+)/i, shape: QueryShape.ATOMIC_NUMBER },
-            { regex: /(.+?)('s)? law/i, shape: QueryShape.PHYSICS_LAW }
+            { regex: /(.+?)('s)? law/i, shape: QueryShape.PHYSICS_LAW },
+            { regex: /language of (.+)/i, shape: QueryShape.LANGUAGE_OF },
+            { regex: /currency of (.+)/i, shape: QueryShape.CURRENCY_OF },
+            { regex: /president of (.+)/i, shape: QueryShape.LEADER_OF },
+            { regex: /leader of (.+)/i, shape: QueryShape.LEADER_OF },
+            { regex: /who (?:leads?|rules?|governs?) (.+)/i, shape: QueryShape.LEADER_OF },
+            { regex: /who invented (.+)/i, shape: QueryShape.INVENTION_OF },
+            { regex: /who discovered (.+)/i, shape: QueryShape.INVENTION_OF },
+            { regex: /who (?:wrote|composed|authored) (.+)/i, shape: QueryShape.COMPOSED_BY },
+            { regex: /where is (.+)/i, shape: QueryShape.LOCATION_OF },
+            { regex: /define (.+)/i, shape: QueryShape.DEFINITION_OF },
+            { regex: /what (?:is|does) (.+) mean/i, shape: QueryShape.DEFINITION_OF },
+            { regex: /history of (.+)/i, shape: QueryShape.HISTORY_OF },
+            { regex: /(.+?)('s)? theorem/i, shape: QueryShape.MATH_OF }
         ];
 
         for (const p of patterns) {
@@ -144,6 +157,16 @@ export class KinematicEngine {
         checkCluster("POPULATION", QueryShape.POPULATION_OF);
         checkCluster("PHYSICS", QueryShape.PHYSICS_LAW);
         checkCluster("ELEMENT", QueryShape.ATOMIC_NUMBER);
+        checkCluster("LANGUAGE", QueryShape.LANGUAGE_OF);
+        checkCluster("CURRENCY", QueryShape.CURRENCY_OF);
+        checkCluster("LEADER", QueryShape.LEADER_OF);
+        checkCluster("HISTORY", QueryShape.HISTORY_OF);
+        checkCluster("LOCATION", QueryShape.LOCATION_OF);
+        checkCluster("BIOLOGY", QueryShape.BIOLOGY_OF);
+        checkCluster("MATH", QueryShape.MATH_OF);
+        checkCluster("DEFINITION", QueryShape.DEFINITION_OF);
+        checkCluster("INVENTION", QueryShape.INVENTION_OF);
+        checkCluster("COMPOSER", QueryShape.COMPOSED_BY);
 
         if (bestMatch.score >= 1) {
             const cluster = SEMANTIC_CLUSTERS[bestMatch.clusterName];

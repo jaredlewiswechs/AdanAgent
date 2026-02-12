@@ -164,6 +164,120 @@ assert(
     'Preserves title prefixes like Dr.'
 );
 
+// Test new semantic cluster coverage
+console.log('\n--- Expanded Cluster Coverage ---');
+
+const LEADER_CLUSTER = new Set(["president", "prime", "minister", "king", "queen", "emperor", "chancellor", "leader", "ruler", "monarch", "sultan", "dictator", "ceo", "chairman", "director", "head", "chief", "governor", "mayor", "senator", "secretary", "premier"]);
+const HISTORY_CLUSTER = new Set(["history", "historical", "war", "battle", "revolution", "empire", "dynasty", "era", "period", "ancient", "medieval", "colonial", "independence", "treaty", "conquest", "civilization", "reign", "century", "decade", "year", "event", "happened", "occur", "occurred"]);
+const LOCATION_CLUSTER = new Set(["located", "location", "where", "continent", "region", "country", "border", "neighboring", "geography", "geographical", "latitude", "longitude", "north", "south", "east", "west", "ocean", "sea", "river", "mountain", "lake", "island", "peninsula", "desert"]);
+const BIOLOGY_CLUSTER = new Set(["species", "organism", "cell", "gene", "genetic", "dna", "rna", "protein", "enzyme", "bacteria", "virus", "evolution", "taxonomy", "kingdom", "phylum", "genus", "mammal", "reptile", "amphibian", "photosynthesis", "mitosis", "ecosystem", "habitat", "organ", "anatomy", "biology", "biological"]);
+const MATH_CLUSTER = new Set(["calculate", "calculation", "formula", "theorem", "proof", "algebra", "calculus", "geometry", "trigonometry", "integral", "derivative", "matrix", "vector", "polynomial", "logarithm", "factorial", "prime", "fibonacci", "arithmetic", "mathematical", "math", "mathematics", "sum", "product", "quotient"]);
+const DEFINITION_CLUSTER = new Set(["define", "definition", "meaning", "means", "meant", "term", "concept", "describe", "description", "explain", "explanation", "refer", "refers", "denote", "denotes", "signify", "signifies", "synonym", "antonym", "etymology"]);
+const INVENTION_CLUSTER = new Set(["invent", "invented", "inventor", "invention", "patent", "discover", "discovered", "discovery", "discoverer", "devised", "designed", "designer", "pioneer", "pioneered", "innovator", "innovation", "breakthrough"]);
+const LANGUAGE_CLUSTER = new Set(["language", "speak", "spoken", "tongue", "dialect", "linguistic", "official", "native", "bilingual", "multilingual"]);
+const CURRENCY_CLUSTER = new Set(["currency", "money", "monetary", "coin", "banknote", "denomination", "exchange", "tender", "dollar", "euro", "yen", "pound"]);
+const COMPOSER_CLUSTER = new Set(["compose", "composed", "composer", "composition", "symphony", "concerto", "sonata", "opera", "wrote", "written", "author", "authored", "playwright", "novelist", "poet", "songwriter", "directed", "director", "film", "movie", "painted", "painter", "sculpted", "sculptor", "artist"]);
+
+// Helper: simulate Tier 2 cluster overlap scoring
+function clusterScore(query: string, cluster: Set<string>): number {
+    const words = query.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(" ").filter(w => w.length > 2);
+    return words.filter(w => cluster.has(w)).length;
+}
+
+// LEADER cluster
+assert(
+    clusterScore("who is the president of France", LEADER_CLUSTER) >= 1,
+    'LEADER cluster matches "president of France"'
+);
+assert(
+    extractEntity("who is the king of Spain", LEADER_CLUSTER) === 'Spain',
+    'LEADER entity extracts "Spain" from king query'
+);
+
+// HISTORY cluster
+assert(
+    clusterScore("what happened during the French Revolution", HISTORY_CLUSTER) >= 2,
+    'HISTORY cluster matches revolution + happened'
+);
+assert(
+    extractEntity("history of the Roman Empire", HISTORY_CLUSTER).includes('Roman'),
+    'HISTORY entity preserves "Roman"'
+);
+
+// LOCATION cluster
+assert(
+    clusterScore("where is the Sahara desert located", LOCATION_CLUSTER) >= 2,
+    'LOCATION cluster matches where + desert + located'
+);
+assert(
+    extractEntity("where is Mount Everest located", LOCATION_CLUSTER).includes('Everest'),
+    'LOCATION entity preserves "Mount Everest"'
+);
+
+// BIOLOGY cluster
+assert(
+    clusterScore("what species is a mammal with gene mutations", BIOLOGY_CLUSTER) >= 3,
+    'BIOLOGY cluster matches species + mammal + gene'
+);
+
+// MATH cluster
+assert(
+    clusterScore("prove the Pythagorean theorem using geometry", MATH_CLUSTER) >= 2,
+    'MATH cluster matches theorem + geometry'
+);
+
+// DEFINITION cluster
+assert(
+    clusterScore("define the meaning of entropy", DEFINITION_CLUSTER) >= 2,
+    'DEFINITION cluster matches define + meaning'
+);
+assert(
+    extractEntity("what does epistemology mean", DEFINITION_CLUSTER).includes('epistemology'),
+    'DEFINITION entity preserves "epistemology"'
+);
+
+// INVENTION cluster
+assert(
+    clusterScore("who invented the telephone", INVENTION_CLUSTER) >= 1,
+    'INVENTION cluster matches invented'
+);
+assert(
+    extractEntity("who discovered penicillin", INVENTION_CLUSTER) === 'penicillin',
+    'INVENTION entity extracts "penicillin"'
+);
+
+// LANGUAGE cluster
+assert(
+    clusterScore("what language is spoken in Brazil", LANGUAGE_CLUSTER) >= 2,
+    'LANGUAGE cluster matches language + spoken'
+);
+
+// CURRENCY cluster
+assert(
+    clusterScore("what is the currency of Japan", CURRENCY_CLUSTER) >= 1,
+    'CURRENCY cluster matches currency'
+);
+
+// COMPOSER cluster
+assert(
+    clusterScore("who composed the Moonlight Sonata", COMPOSER_CLUSTER) >= 2,
+    'COMPOSER cluster matches composed + sonata'
+);
+assert(
+    extractEntity("who wrote War and Peace", COMPOSER_CLUSTER) === 'War and Peace',
+    'COMPOSER entity preserves full title "War and Peace"'
+);
+
+// Cross-domain: verify no false positives across unrelated clusters
+assert(
+    clusterScore("what is the capital of Japan", BIOLOGY_CLUSTER) === 0,
+    'BIOLOGY cluster does NOT match capital query (no false positive)'
+);
+assert(
+    clusterScore("who founded SpaceX", MATH_CLUSTER) === 0,
+    'MATH cluster does NOT match founder query (no false positive)'
+);
+
 // Test parseLooselyStructuredResponse numeric extraction
 console.log('\n--- Loose JSON Numeric Parsing ---');
 

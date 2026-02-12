@@ -32,7 +32,7 @@ export const GLYPH_DB: Record<string, Glyph> = {
 
 export const SEMANTIC_CLUSTERS: Record<string, Set<string>> = {
     "CAPITAL": new Set([
-        "capital", "seat", "government", "rule", "govern", 
+        "capital", "seat", "government", "rule", "govern",
         "headquarters", "center", "city", "administrative"
     ]),
     "FOUNDER": new Set([
@@ -42,14 +42,75 @@ export const SEMANTIC_CLUSTERS: Record<string, Set<string>> = {
     ]),
     "POPULATION": new Set([
         "population", "people", "inhabitants", "citizens",
-        "residents", "live", "living", "populate", "demographics"
+        "residents", "live", "living", "populate", "demographics", "census"
     ]),
     "PHYSICS": new Set([
-        "law", "theory", "principle", "equation", "force", 
-        "motion", "relativity", "thermodynamics", "gravity", "physics"
+        "law", "theory", "principle", "equation", "force",
+        "motion", "relativity", "thermodynamics", "gravity", "physics",
+        "quantum", "entropy", "momentum", "velocity", "acceleration"
     ]),
     "ELEMENT": new Set([
         "element", "atom", "atomic", "chemical", "periodic",
-        "symbol", "molecule", "compound", "proton", "electron"
+        "symbol", "molecule", "compound", "proton", "electron",
+        "neutron", "isotope", "valence"
+    ]),
+    "LANGUAGE": new Set([
+        "language", "speak", "spoken", "tongue", "dialect",
+        "linguistic", "official", "native", "bilingual", "multilingual"
+    ]),
+    "CURRENCY": new Set([
+        "currency", "money", "monetary", "coin", "banknote",
+        "denomination", "exchange", "tender", "dollar", "euro", "yen", "pound"
+    ]),
+    "LEADER": new Set([
+        "president", "prime", "minister", "king", "queen", "emperor",
+        "chancellor", "leader", "ruler", "monarch", "sultan", "dictator",
+        "ceo", "chairman", "director", "head", "chief", "governor",
+        "mayor", "senator", "secretary", "premier"
+    ]),
+    "HISTORY": new Set([
+        "history", "historical", "war", "battle", "revolution", "empire",
+        "dynasty", "era", "period", "ancient", "medieval", "colonial",
+        "independence", "treaty", "conquest", "civilization", "reign",
+        "century", "decade", "year", "event", "happened", "occur", "occurred"
+    ]),
+    "LOCATION": new Set([
+        "located", "location", "where", "continent", "region", "country",
+        "border", "neighboring", "geography", "geographical", "latitude",
+        "longitude", "north", "south", "east", "west", "ocean", "sea",
+        "river", "mountain", "lake", "island", "peninsula", "desert"
+    ]),
+    "BIOLOGY": new Set([
+        "species", "organism", "cell", "gene", "genetic", "dna", "rna",
+        "protein", "enzyme", "bacteria", "virus", "evolution", "taxonomy",
+        "kingdom", "phylum", "genus", "mammal", "reptile", "amphibian",
+        "photosynthesis", "mitosis", "ecosystem", "habitat", "organ",
+        "anatomy", "biology", "biological", "organism"
+    ]),
+    "MATH": new Set([
+        "calculate", "calculation", "formula", "theorem", "proof",
+        "algebra", "calculus", "geometry", "trigonometry", "integral",
+        "derivative", "matrix", "vector", "polynomial", "logarithm",
+        "factorial", "prime", "fibonacci", "arithmetic", "mathematical",
+        "math", "mathematics", "sum", "product", "quotient"
+    ]),
+    "DEFINITION": new Set([
+        "define", "definition", "meaning", "means", "meant", "term",
+        "concept", "describe", "description", "explain", "explanation",
+        "refer", "refers", "denote", "denotes", "signify", "signifies",
+        "synonym", "antonym", "etymology"
+    ]),
+    "INVENTION": new Set([
+        "invent", "invented", "inventor", "invention", "patent",
+        "discover", "discovered", "discovery", "discoverer", "devised",
+        "designed", "designer", "pioneer", "pioneered", "innovator",
+        "innovation", "breakthrough"
+    ]),
+    "COMPOSER": new Set([
+        "compose", "composed", "composer", "composition", "symphony",
+        "concerto", "sonata", "opera", "wrote", "written", "author",
+        "authored", "playwright", "novelist", "poet", "songwriter",
+        "directed", "director", "film", "movie", "painted", "painter",
+        "sculpted", "sculptor", "artist"
     ])
 };
