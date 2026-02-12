@@ -35,6 +35,29 @@ const parseJsonBlock = <T>(raw: string): T | null => {
     }
 };
 
+const parseLooselyStructuredResponse = (raw: string): Partial<AdaEvaluation> | null => {
+    const cleaned = raw.trim();
+    if (!cleaned) return null;
+
+    const responseMatch = cleaned.match(/"response"\s*:\s*"([\s\S]*?)"/i);
+    const entityMatch = cleaned.match(/"entity"\s*:\s*"([\s\S]*?)"/i);
+    const equationMatch = cleaned.match(/"equation"\s*:\s*"([\s\S]*?)"/i);
+
+    const hasJsonKeys = /"correctness"|"misconception"|"response"|"entity"/i.test(cleaned);
+
+    if (hasJsonKeys) {
+        return {
+            response: responseMatch?.[1]?.replace(/\\n/g, '\n').trim() || cleaned,
+            entity: entityMatch?.[1]?.trim(),
+            equation: equationMatch?.[1]?.trim()
+        };
+    }
+
+    return {
+        response: cleaned
+    };
+};
+
 const normalizeEvaluation = (result: Partial<AdaEvaluation>, query: string): AdaEvaluation => ({
     correctness: clamp(Number(result.correctness ?? 0.65)),
     misconception: clamp(Number(result.misconception ?? 0.2)),
@@ -158,7 +181,8 @@ export class AdaEngine {
                 { role: 'user', content: prompt }
             ]);
             const parsed = parseJsonBlock<Partial<AdaEvaluation>>(evaluationResponse);
-            evalData = normalizeEvaluation(parsed ?? {}, query);
+            const looselyParsed = parsed ? null : parseLooselyStructuredResponse(evaluationResponse);
+            evalData = normalizeEvaluation(parsed ?? looselyParsed ?? {}, query);
         } catch (error) {
             console.warn('Evaluation request failed, using deterministic fallback.', error);
             const fallbackMisconception = /who is|capital|president|prime minister|ceo|latest|current/i.test(query) ? 0.35 : 0.15;
