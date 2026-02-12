@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import GlyphLab from './components/GlyphLab';
 import WordMechanic from './components/WordMechanic';
 import SemanticSolver from './components/SemanticSolver';
@@ -7,6 +7,22 @@ import AdaConsole from './components/AdaConsole';
 
 const App: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'ada' | 'glyphs' | 'mechanics' | 'semantics'>('ada');
+
+    const tabs = ['ada', 'semantics', 'mechanics', 'glyphs'] as const;
+    const tabLabels: Record<string, string> = { ada: 'Ada', semantics: 'Solver', mechanics: 'Engine', glyphs: 'Glyphs' };
+
+    const handleTabKeyDown = useCallback((e: React.KeyboardEvent) => {
+        const currentIdx = tabs.indexOf(activeTab);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = tabs[(currentIdx + 1) % tabs.length];
+            setActiveTab(next);
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prev = tabs[(currentIdx - 1 + tabs.length) % tabs.length];
+            setActiveTab(prev);
+        }
+    }, [activeTab]);
 
     return (
         <div className="min-h-screen flex flex-col">
@@ -25,57 +41,34 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    <nav className="flex items-center bg-slate-900/50 p-1 rounded-lg border border-slate-800">
-                        <button
-                            onClick={() => setActiveTab('ada')}
-                            className={`px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all rounded ${
-                                activeTab === 'ada' 
-                                ? 'bg-cyan-600 text-white shadow-lg' 
-                                : 'text-slate-500 hover:text-slate-300'
-                            }`}
-                        >
-                            Ada
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('semantics')}
-                            className={`px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all rounded ${
-                                activeTab === 'semantics' 
-                                ? 'bg-cyan-600 text-white shadow-lg' 
-                                : 'text-slate-500 hover:text-slate-300'
-                            }`}
-                        >
-                            Solver
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('mechanics')}
-                            className={`px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all rounded ${
-                                activeTab === 'mechanics' 
-                                ? 'bg-cyan-600 text-white shadow-lg' 
-                                : 'text-slate-500 hover:text-slate-300'
-                            }`}
-                        >
-                            Engine
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('glyphs')}
-                            className={`px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all rounded ${
-                                activeTab === 'glyphs' 
-                                ? 'bg-cyan-600 text-white shadow-lg' 
-                                : 'text-slate-500 hover:text-slate-300'
-                            }`}
-                        >
-                            Glyphs
-                        </button>
+                    <nav className="flex items-center bg-slate-900/50 p-1 rounded-lg border border-slate-800" role="tablist" aria-label="Main navigation" onKeyDown={handleTabKeyDown}>
+                        {tabs.map(tab => (
+                            <button
+                                key={tab}
+                                onClick={() => setActiveTab(tab)}
+                                role="tab"
+                                aria-selected={activeTab === tab}
+                                aria-controls={`panel-${tab}`}
+                                tabIndex={activeTab === tab ? 0 : -1}
+                                className={`px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all rounded ${
+                                    activeTab === tab
+                                    ? 'bg-cyan-600 text-white shadow-lg'
+                                    : 'text-slate-500 hover:text-slate-300'
+                                }`}
+                            >
+                                {tabLabels[tab]}
+                            </button>
+                        ))}
                     </nav>
                 </div>
             </header>
 
             {/* Main Content */}
             <main className="container mx-auto py-8 flex-1">
-                {activeTab === 'ada' && <AdaConsole />}
-                {activeTab === 'glyphs' && <GlyphLab />}
-                {activeTab === 'mechanics' && <WordMechanic />}
-                {activeTab === 'semantics' && <SemanticSolver />}
+                {activeTab === 'ada' && <div id="panel-ada" role="tabpanel" aria-label="Ada Console"><AdaConsole /></div>}
+                {activeTab === 'glyphs' && <div id="panel-glyphs" role="tabpanel" aria-label="Glyph Lab"><GlyphLab /></div>}
+                {activeTab === 'mechanics' && <div id="panel-mechanics" role="tabpanel" aria-label="Word Mechanic"><WordMechanic /></div>}
+                {activeTab === 'semantics' && <div id="panel-semantics" role="tabpanel" aria-label="Semantic Solver"><SemanticSolver /></div>}
             </main>
 
             {/* Footer */}

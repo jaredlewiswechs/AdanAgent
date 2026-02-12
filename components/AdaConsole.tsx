@@ -33,6 +33,20 @@ const AdaConsole: React.FC = () => {
             ]);
         } catch (e) {
             console.error(e);
+            // Surface the error as a failed result so the user sees feedback
+            const errMsg = e instanceof Error ? e.message : 'Unknown error';
+            setHistory(prev => [...prev, {
+                query: currentInput,
+                result: {
+                    tier: 3, method: 'Error', shape: 'error', entity: 'System',
+                    confidence: 0, details: '', insight: '',
+                    csv: { c: 0, m: 0, f: 1, k: 0, state: 'FOG' as any },
+                    constraint: { status: 'RED' as any, ratio: 0 },
+                    action: 'ABSTAIN' as any,
+                    trajectoryPoints: [[0, 0]], isClosed: false,
+                    error: errMsg
+                }
+            }]);
         } finally {
             setIsThinking(false);
         }
@@ -41,12 +55,15 @@ const AdaConsole: React.FC = () => {
     return (
         <div className="flex flex-col h-[calc(100vh-180px)] max-w-6xl mx-auto gap-4 p-4 animate-in fade-in duration-700">
             {/* Top Control Bar */}
-            <div className="flex justify-between items-center bg-slate-900/60 p-2 px-4 rounded-full border border-slate-800">
-                <div className="flex gap-2">
+            <div className="flex justify-between items-center bg-slate-900/60 p-2 px-4 rounded-full border border-slate-800" role="toolbar" aria-label="Complexity controls">
+                <div className="flex gap-2" role="radiogroup" aria-label="Response complexity level">
                     {['ELI5', 'STANDARD', 'TECHNICAL'].map(lvl => (
-                        <button 
+                        <button
                             key={lvl}
                             onClick={() => setComplexity(lvl as any)}
+                            role="radio"
+                            aria-checked={complexity === lvl}
+                            aria-label={`${lvl} complexity mode`}
                             className={`px-3 py-1 rounded-full text-[10px] mono font-bold transition-all ${
                                 complexity === lvl ? 'bg-cyan-500 text-slate-950' : 'text-slate-500 hover:text-slate-300'
                             }`}
@@ -55,7 +72,7 @@ const AdaConsole: React.FC = () => {
                         </button>
                     ))}
                 </div>
-                <div className="text-[10px] mono text-slate-600 uppercase tracking-widest">
+                <div className="text-[10px] mono text-slate-600 uppercase tracking-widest" aria-live="polite">
                     Governance Active • 2026 Temporal Link
                 </div>
             </div>
@@ -80,21 +97,32 @@ const AdaConsole: React.FC = () => {
                         </div>
 
                         {/* Ada Response bubble */}
-                        <div className="flex items-start gap-4">
-                            <div className="w-8 h-8 rounded bg-cyan-900/30 flex items-center justify-center mono text-xs text-cyan-400 border border-cyan-500/30">A</div>
+                        <div className="flex items-start gap-4" role="article" aria-label={`Ada response to: ${item.query}`}>
+                            <div className="w-8 h-8 rounded bg-cyan-900/30 flex items-center justify-center mono text-xs text-cyan-400 border border-cyan-500/30" aria-hidden="true">A</div>
                             <div className="flex-1 space-y-4">
+                                {/* Error banner */}
+                                {item.result.error && (
+                                    <div className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg" role="alert">
+                                        <svg className="w-4 h-4 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                        </svg>
+                                        <span className="text-red-400 text-xs mono">AI service error — showing fallback response. {item.result.error}</span>
+                                    </div>
+                                )}
                                 <div className="glass-panel p-6 border-l-4 border-l-cyan-500 rounded-lg shadow-xl">
                                     <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
                                         <div className="bg-slate-950 px-3 py-1 rounded-md border border-slate-800">
                                             <span className="text-[10px] mono text-slate-500 mr-2 uppercase">Equation</span>
                                             <span className="text-cyan-400 font-bold mono text-sm">{item.result.lexical?.equation}</span>
                                         </div>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-2" role="status" aria-label={`Constraint: ${item.result.constraint?.status}, State: ${item.result.csv?.state}`}>
                                             <span className={`text-[9px] font-bold tracking-widest px-2 py-0.5 rounded border ${
                                                 item.result.constraint?.status === ConstraintStatus.GREEN ? 'bg-green-500/10 border-green-500/50 text-green-400' :
                                                 item.result.constraint?.status === ConstraintStatus.RED ? 'bg-red-500/10 border-red-500/50 text-red-400' :
                                                 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400'
-                                            }`}>
+                                            }`} title={`Constraint status: ${item.result.constraint?.status} (ratio: ${item.result.constraint?.ratio?.toFixed(2)})`}>
+                                                {item.result.constraint?.status === ConstraintStatus.GREEN ? '\u2713' :
+                                                 item.result.constraint?.status === ConstraintStatus.RED ? '\u2717' : '\u26A0'}{' '}
                                                 FG:{item.result.constraint?.status}
                                             </span>
                                             <span className="text-[9px] mono text-slate-500 uppercase py-0.5">{item.result.csv?.state}</span>
@@ -141,12 +169,12 @@ const AdaConsole: React.FC = () => {
 
                                     {/* Geometric Stats */}
                                     <div className="flex items-center gap-6 pt-6 border-t border-slate-800">
-                                        <div className="flex-1 h-1 bg-slate-900 rounded-full flex overflow-hidden">
-                                            <div style={{ width: `${(item.result.csv?.c || 0) * 100}%` }} className="bg-green-500 h-full" />
-                                            <div style={{ width: `${(item.result.csv?.m || 0) * 100}%` }} className="bg-red-500 h-full" />
+                                        <div className="flex-1 h-1 bg-slate-900 rounded-full flex overflow-hidden" role="meter" aria-label={`Correctness: ${((item.result.csv?.c || 0) * 100).toFixed(0)}%, Misconception: ${((item.result.csv?.m || 0) * 100).toFixed(0)}%`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((item.result.csv?.c || 0) * 100)}>
+                                            <div style={{ width: `${(item.result.csv?.c || 0) * 100}%` }} className="bg-green-500 h-full" title={`Correctness: ${((item.result.csv?.c || 0) * 100).toFixed(0)}%`} />
+                                            <div style={{ width: `${(item.result.csv?.m || 0) * 100}%` }} className="bg-red-500 h-full" title={`Misconception: ${((item.result.csv?.m || 0) * 100).toFixed(0)}%`} />
                                         </div>
-                                        <div className="h-10 w-24 relative overflow-hidden bg-slate-950/40 rounded border border-slate-900">
-                                            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                        <div className="h-10 w-24 relative overflow-hidden bg-slate-950/40 rounded border border-slate-900" title="Semantic resolution trajectory">
+                                            <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Bezier trajectory curve showing query resolution path">
                                                 <path d={`M ${item.result.trajectoryPoints?.map(p => `${p[0]*100},${100 - p[1]*100}`).join(' L ')}`} fill="none" stroke="#22d3ee" strokeWidth="3" />
                                             </svg>
                                         </div>
@@ -158,7 +186,7 @@ const AdaConsole: React.FC = () => {
                 ))}
 
                 {isThinking && (
-                    <div className="flex items-start gap-4 animate-pulse">
+                    <div className="flex items-start gap-4 animate-pulse" role="status" aria-live="polite" aria-label="Processing query">
                         <div className="w-8 h-8 rounded bg-cyan-900/30 flex items-center justify-center mono text-xs text-cyan-400 border border-cyan-500/30">A</div>
                         <div className="glass-panel p-4 rounded-lg flex items-center gap-3">
                             <span className="text-[10px] mono text-cyan-400 animate-pulse">RESOLVING MANIFOLD...</span>
@@ -174,21 +202,25 @@ const AdaConsole: React.FC = () => {
             </div>
 
             {/* Input Section */}
-            <div className="glass-panel p-2 rounded-full flex items-center border-cyan-500/30 shadow-[0_10px_40px_rgba(0,0,0,0.5)] mt-auto mb-4">
+            <div className="glass-panel p-2 rounded-full flex items-center border-cyan-500/30 shadow-[0_10px_40px_rgba(0,0,0,0.5)] mt-auto mb-4" role="search">
+                <label htmlFor="ada-input" className="sr-only">Query input</label>
                 <input
+                    id="ada-input"
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                     placeholder="Engage with semantic proposition..."
+                    aria-label="Enter your query for Ada"
                     className="flex-1 bg-transparent px-6 py-4 focus:outline-none text-slate-200 text-lg placeholder:text-slate-700"
                 />
                 <button
                     onClick={handleSend}
                     disabled={isThinking || !input.trim()}
+                    aria-label={isThinking ? 'Processing query...' : 'Send query'}
                     className="bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 disabled:text-slate-600 text-slate-950 w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-[0_0_20px_rgba(34,211,238,0.2)]"
                 >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                     </svg>
                 </button>

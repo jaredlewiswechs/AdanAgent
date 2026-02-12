@@ -1,9 +1,11 @@
 
-import { 
-    Scalar, Vector, CognitiveState, ConstraintStatus, Action, 
+import {
+    Scalar, Vector, CognitiveState, ConstraintStatus, Action,
     SearchResult, PhysicalProperty, GroundingSource, ChatMessage
 } from '../types';
 import { WordMechanics } from './kinematicEngine';
+import { callFreeAI, AIRequestError } from './aiClient';
+import { COGNITIVE_THRESHOLDS, estimateFallbackMisconception } from '../config';
 
 type AdaEvaluation = {
     correctness: number;
@@ -32,8 +34,6 @@ const LEXICAL_FALLBACKS: Record<string, { synonyms: string[]; antonyms: string[]
     eli5: { synonyms: ['simple', 'kid-friendly', 'plain-language', 'easy'], antonyms: ['technical', 'jargon-heavy', 'advanced', 'complex'] },
     technical: { synonyms: ['specialized', 'precise', 'formal', 'detailed'], antonyms: ['simple', 'casual', 'plain', 'nontechnical'] }
 };
-
-const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
@@ -166,52 +166,6 @@ const eli5Rewrite = (text: string, entity: string) => {
     return rewritten.startsWith('Simple take:') ? rewritten : `Simple take: ${rewritten}`;
 };
 
-const extractAIContent = (raw: string): string => {
-    const trimmed = raw.trim();
-    if (!trimmed) return '';
-    // Handle OpenAI-compatible JSON response format
-    if (trimmed.startsWith('{')) {
-        try {
-            const parsed = JSON.parse(trimmed);
-            // OpenAI format: { choices: [{ message: { content: "..." } }] }
-            if (parsed.choices?.[0]?.message?.content) {
-                return parsed.choices[0].message.content;
-            }
-            // Alternative format: { content: "..." }
-            if (typeof parsed.content === 'string') {
-                return parsed.content;
-            }
-            // Alternative format: { text: "..." }
-            if (typeof parsed.text === 'string') {
-                return parsed.text;
-            }
-        } catch {
-            // Not valid JSON at top level, return as-is
-        }
-    }
-    return trimmed;
-};
-
-const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => {
-    const response = await fetch(POLLINATIONS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            model: 'openai',
-            messages,
-            temperature: 0.2,
-            private: false
-        })
-    });
-
-    if (!response.ok) {
-        throw new Error(`Free AI request failed: ${response.status}`);
-    }
-
-    const raw = await response.text();
-    return extractAIContent(raw);
-};
-
 const Vec = {
     add: (v1: Vector, v2: Vector): Vector => v1.map((val, i) => val + (v2[i] || 0)),
     scale: (v: Vector, s: Scalar): Vector => v.map(val => val * s),
@@ -222,7 +176,7 @@ const Vec = {
 export class BezierPrimitive {
     constructor(public P0: Vector, public P1: Vector, public P2: Vector, public P3: Vector) {}
 
-    public evaluate(t: number): Vector {
+    public evaluate(t: Scalar): Vector {
         const mt = 1 - t;
         const mt2 = mt * mt;
         const mt3 = mt2 * mt;
@@ -237,7 +191,7 @@ export class BezierPrimitive {
 
     public checkClosure(): boolean {
         const finalPoint = this.evaluate(1.0);
-        return Vec.equals(finalPoint, this.P3);
+        return Vec.equals(finalPoint, this.P3, COGNITIVE_THRESHOLDS.closureTolerance);
     }
 }
 
@@ -297,6 +251,7 @@ export class AdaEngine {
         `;
 
         let evalData: AdaEvaluation = normalizeEvaluation({}, query);
+        let aiError: string | undefined;
         try {
             const evaluationResponse = await callFreeAI([
                 {
@@ -310,9 +265,10 @@ export class AdaEngine {
             evalData = normalizeEvaluation(parsed ?? looselyParsed ?? {}, query);
         } catch (error) {
             console.warn('Evaluation request failed, using deterministic fallback.', error);
-            const fallbackMisconception = /who is|capital|president|prime minister|ceo|latest|current/i.test(query) ? 0.35 : 0.15;
+            aiError = error instanceof Error ? error.message : 'AI service unavailable';
+            const fallbackMisconception = estimateFallbackMisconception(query);
             evalData = normalizeEvaluation({
-                correctness: 0.62,
+                correctness: COGNITIVE_THRESHOLDS.fallbackCorrectness,
                 misconception: fallbackMisconception,
                 entity: query.split(' ').slice(0, 3).join(' ') || 'Signal',
                 equation: `interpret("${query}") = practical_answer`,
@@ -329,16 +285,16 @@ export class AdaEngine {
 
         // NEWTON GOVERNANCE CALCULATIONS
         let state = CognitiveState.PARTIAL;
-        if (m > c && m > 0.4) state = CognitiveState.MISCONCEPTION;
-        else if (f > 0.5) state = CognitiveState.FOG;
-        else if (c > 0.7) state = CognitiveState.CORRECT;
+        if (m > c && m > COGNITIVE_THRESHOLDS.misconceptionHigh) state = CognitiveState.MISCONCEPTION;
+        else if (f > COGNITIVE_THRESHOLDS.fogHigh) state = CognitiveState.FOG;
+        else if (c > COGNITIVE_THRESHOLDS.correctHigh) state = CognitiveState.CORRECT;
 
         const ground = Math.max(0.01, 1.0 - m);
         const ratio = c / ground;
         let status = ConstraintStatus.GREEN;
-        if (ground <= 0.05) status = ConstraintStatus.FINFR;
-        else if (ratio > 1.2) status = ConstraintStatus.RED;
-        else if (ratio >= 0.8) status = ConstraintStatus.YELLOW;
+        if (ground <= COGNITIVE_THRESHOLDS.groundFloor) status = ConstraintStatus.FINFR;
+        else if (ratio > COGNITIVE_THRESHOLDS.ratioRedMin) status = ConstraintStatus.RED;
+        else if (ratio >= COGNITIVE_THRESHOLDS.ratioYellowMin) status = ConstraintStatus.YELLOW;
 
         // KINEMATIC TRAJECTORY (Dynamic drag based on misconception)
         const mechanics = WordMechanics.analyze(evalData.entity || "Signal");
@@ -350,7 +306,8 @@ export class AdaEngine {
         const P2 = [0.9 - (m * 0.4), 0.5 - (m * 0.2)];
         const bezier = new BezierPrimitive(P0, P1, P2, P3);
         const trajectoryPoints: Vector[] = [];
-        for (let i = 0; i <= 20; i++) trajectoryPoints.push(bezier.evaluate(i / 20));
+        const samples = COGNITIVE_THRESHOLDS.trajectorySamples;
+        for (let i = 0; i <= samples; i++) trajectoryPoints.push(bezier.evaluate(i / samples));
 
         const lexical = mergeLexicalCoverage(query, evalData.synonyms, evalData.antonyms);
         const cleanedResponse = cleanResponseText(evalData.response);
@@ -376,7 +333,8 @@ export class AdaEngine {
             action: evalData.action as Action,
             trajectoryPoints,
             isClosed: bezier.checkClosure(),
-            groundingSources: groundingSources.length > 0 ? groundingSources : undefined
+            groundingSources: groundingSources.length > 0 ? groundingSources : undefined,
+            error: aiError
         };
     }
 }

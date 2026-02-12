@@ -1,48 +1,11 @@
 
-import { 
-    Glyph, AnalysisResult, MechanicalStats, 
+import {
+    Glyph, AnalysisResult, MechanicalStats,
     SearchResult, QueryShape, PhysicalProperty,
     CognitiveState, ConstraintStatus, Action, Vector
 } from '../types';
 import { GLYPH_DB, SEMANTIC_CLUSTERS } from '../constants';
-
-const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
-
-const extractAIContent = (raw: string): string => {
-    const trimmed = raw.trim();
-    if (!trimmed) return '';
-    if (trimmed.startsWith('{')) {
-        try {
-            const parsed = JSON.parse(trimmed);
-            if (parsed.choices?.[0]?.message?.content) {
-                return parsed.choices[0].message.content;
-            }
-            if (typeof parsed.content === 'string') return parsed.content;
-            if (typeof parsed.text === 'string') return parsed.text;
-        } catch { /* not JSON wrapper, return as-is */ }
-    }
-    return trimmed;
-};
-
-const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => {
-    const response = await fetch(POLLINATIONS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            model: 'openai',
-            messages,
-            temperature: 0.2,
-            private: false
-        })
-    });
-
-    if (!response.ok) {
-        throw new Error(`Free AI request failed: ${response.status}`);
-    }
-
-    const raw = await response.text();
-    return extractAIContent(raw);
-};
+import { callFreeAI } from './aiClient';
 
 export class WordMechanics {
     static analyze(word: string): AnalysisResult {
@@ -225,7 +188,6 @@ export class KinematicEngine {
                 isClosed: true
             };
         } catch (e) {
-            // Fix: Added missing required SearchResult properties
             return {
                 tier: 3,
                 method: "Failed Vector Search",
@@ -238,7 +200,8 @@ export class KinematicEngine {
                 constraint: { status: ConstraintStatus.RED, ratio: 0 },
                 action: Action.ABSTAIN,
                 trajectoryPoints: [[0, 0]],
-                isClosed: false
+                isClosed: false,
+                error: e instanceof Error ? e.message : 'AI service unavailable'
             };
         }
     }

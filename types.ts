@@ -111,6 +111,8 @@ export interface SearchResult {
     trajectoryPoints: Vector[];
     isClosed: boolean;
     groundingSources?: GroundingSource[];
+    /** Set when AI fallback was used due to network/API failure */
+    error?: string;
 }
 
 export interface ChatMessage {
