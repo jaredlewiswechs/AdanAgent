@@ -84,11 +84,11 @@ const SemanticSolver: React.FC = () => {
                         </div>
                     </div>
 
-                    {result.geminiInsight && (
+                    {result.insight && (
                         <div className="p-4 bg-cyan-950/20 border border-cyan-900/50 rounded-lg">
-                            <label className="text-[10px] text-cyan-500 uppercase tracking-widest block mb-2">Kinematic Latent Insight (Gemini)</label>
+                            <label className="text-[10px] text-cyan-500 uppercase tracking-widest block mb-2">Kinematic Latent Insight (Ada)</label>
                             <p className="text-cyan-100/80 italic text-sm leading-relaxed">
-                                {result.geminiInsight}
+                                {result.insight}
                             </p>
                         </div>
                     )}

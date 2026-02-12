@@ -29,7 +29,7 @@ const AdaConsole: React.FC = () => {
             setChatLog(prev => [
                 ...prev, 
                 { role: 'user', parts: [{ text: currentInput }] },
-                { role: 'model', parts: [{ text: result.geminiInsight }] }
+                { role: 'model', parts: [{ text: result.insight }] }
             ]);
         } catch (e) {
             console.error(e);
@@ -102,7 +102,7 @@ const AdaConsole: React.FC = () => {
                                     </div>
                                     
                                     <div className="text-slate-200 leading-relaxed mb-6 text-lg font-medium">
-                                        {item.result.geminiInsight}
+                                        {item.result.insight}
                                     </div>
 
                                     {/* Lexical Expansion */}
