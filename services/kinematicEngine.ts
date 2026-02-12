@@ -8,6 +8,22 @@ import { GLYPH_DB, SEMANTIC_CLUSTERS } from '../constants';
 
 const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
 
+const extractAIContent = (raw: string): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed.choices?.[0]?.message?.content) {
+                return parsed.choices[0].message.content;
+            }
+            if (typeof parsed.content === 'string') return parsed.content;
+            if (typeof parsed.text === 'string') return parsed.text;
+        } catch { /* not JSON wrapper, return as-is */ }
+    }
+    return trimmed;
+};
+
 const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => {
     const response = await fetch(POLLINATIONS_URL, {
         method: 'POST',
@@ -24,7 +40,8 @@ const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }
         throw new Error(`Free AI request failed: ${response.status}`);
     }
 
-    return response.text();
+    const raw = await response.text();
+    return extractAIContent(raw);
 };
 
 export class WordMechanics {
@@ -78,7 +95,7 @@ export class KinematicEngine {
         for (const p of patterns) {
             const match = query.match(p.regex);
             if (match) {
-                const entity = match[1].trim(); 
+                const entity = match[1].trim().replace(/[?]+$/, '').trim();
                 // Fix: Added missing required SearchResult properties
                 return {
                     tier: 1,
@@ -87,7 +104,7 @@ export class KinematicEngine {
                     entity: entity,
                     confidence: 1.0,
                     details: "Exact regex match found. Signal clarity: 100%.",
-                    geminiInsight: `Rigid resolution complete for ${entity}. Mapping to ${p.shape} schema.`,
+                    insight: `Rigid resolution complete for ${entity}. Mapping to ${p.shape} schema.`,
                     csv: { c: 1, m: 0, f: 0, k: 1, state: CognitiveState.CORRECT },
                     constraint: { status: ConstraintStatus.GREEN, ratio: 1.0 },
                     action: Action.RESPOND,
@@ -100,17 +117,21 @@ export class KinematicEngine {
     }
 
     private matchTier2(query: string): SearchResult | null {
-        const words = query.toLowerCase()
+        // Normalize for cluster matching but preserve original tokens for entity extraction
+        const NOISE_WORDS = new Set(["what", "does", "from", "the", "who", "is", "are", "was", "were", "of", "a", "an", "in", "on", "at", "to", "for"]);
+        const normalizedWords = query.toLowerCase()
             .replace(/[^a-z0-9 ]/g, "")
             .split(" ")
             .filter(w => w.length > 2);
+        // Keep original tokens (preserving hyphens, periods, commas for titles/suffixes)
+        const originalTokens = query.split(/\s+/).filter(w => w.length > 0);
 
         let bestMatch = { shape: QueryShape.UNKNOWN, score: 0, clusterName: "" };
 
         const checkCluster = (clusterName: string, targetShape: QueryShape) => {
             const cluster = SEMANTIC_CLUSTERS[clusterName];
             let overlapCount = 0;
-            words.forEach(w => {
+            normalizedWords.forEach(w => {
                 if (cluster.has(w)) overlapCount++;
             });
             if (overlapCount > bestMatch.score) {
@@ -126,8 +147,12 @@ export class KinematicEngine {
 
         if (bestMatch.score >= 1) {
             const cluster = SEMANTIC_CLUSTERS[bestMatch.clusterName];
-            const entityWords = words.filter(w => !cluster.has(w) && !["what", "does", "from", "the", "who", "is"].includes(w));
-            const entity = entityWords.map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+            // Use original tokens for entity, filtering out cluster words and noise
+            const entityTokens = originalTokens.filter(token => {
+                const normalized = token.toLowerCase().replace(/[^a-z0-9]/g, '');
+                return !cluster.has(normalized) && !NOISE_WORDS.has(normalized) && normalized.length > 0;
+            });
+            const entity = entityTokens.join(" ") || "Unknown";
 
             // Fix: Added missing required SearchResult properties
             return {
@@ -137,7 +162,7 @@ export class KinematicEngine {
                 entity: entity || "Unknown",
                 confidence: Math.min(0.95, 0.7 + (bestMatch.score * 0.1)),
                 details: `Resonated with [${bestMatch.clusterName}] cluster. Overlap score: ${bestMatch.score}.`,
-                geminiInsight: `Heuristic match suggests ${entity || "Unknown"} correlates with ${bestMatch.shape}.`,
+                insight: `Heuristic match suggests ${entity || "Unknown"} correlates with ${bestMatch.shape}.`,
                 csv: { c: 0.85, m: 0.05, f: 0.1, k: 0.85, state: CognitiveState.PARTIAL },
                 constraint: { status: ConstraintStatus.YELLOW, ratio: 0.9 },
                 action: Action.RESPOND,
@@ -169,7 +194,7 @@ export class KinematicEngine {
                 entity: "Resolved via LLM",
                 confidence: 0.85,
                 details: "High-entropy signal resolved via deep latent space mapping.",
-                geminiInsight: text,
+                insight: text,
                 csv: { c: 0.75, m: 0.1, f: 0.15, k: 0.75, state: CognitiveState.PARTIAL },
                 constraint: { status: ConstraintStatus.GREEN, ratio: 1.0 },
                 action: Action.RESPOND,
@@ -185,7 +210,7 @@ export class KinematicEngine {
                 entity: "System Error",
                 confidence: 0,
                 details: "Connection to latent manifold severed.",
-                geminiInsight: "Manifold structural collapse: Unable to resolve semantic signal.",
+                insight: "Manifold structural collapse: Unable to resolve semantic signal.",
                 csv: { c: 0, m: 0, f: 1.0, k: 0, state: CognitiveState.FOG },
                 constraint: { status: ConstraintStatus.RED, ratio: 0 },
                 action: Action.ABSTAIN,

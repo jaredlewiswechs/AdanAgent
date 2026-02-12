@@ -86,7 +86,7 @@ export interface SearchResult {
     entity: string;
     confidence: number;
     details: string;
-    geminiInsight: string;
+    insight: string;
     lexical?: LexicalNode;
     csv: {
         c: number;

@@ -37,11 +37,35 @@ const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
+const stripCodeFences = (raw: string): string => {
+    // Remove ```json ... ``` or ``` ... ``` wrappers
+    const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
+    return fenceMatch ? fenceMatch[1].trim() : raw.trim();
+};
+
+const cleanResponseText = (text: string): string => {
+    if (!text) return text;
+    let cleaned = text
+        // Remove markdown code fences from within response text
+        .replace(/```[\s\S]*?```/g, '')
+        // Remove markdown headings
+        .replace(/^#{1,6}\s+/gm, '')
+        // Remove bold/italic markdown syntax but keep content
+        .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+        // Remove leading bullet dashes on their own lines and normalize
+        .replace(/^\s*[-*]\s+/gm, '- ')
+        // Collapse multiple newlines
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    return cleaned;
+};
+
 const parseJsonBlock = <T>(raw: string): T | null => {
-    const cleaned = raw.trim();
+    const cleaned = stripCodeFences(raw);
     try {
         return JSON.parse(cleaned) as T;
     } catch {
+        // Try to find the deepest/most relevant JSON object
         const match = cleaned.match(/\{[\s\S]*\}/);
         if (!match) return null;
         try {
@@ -53,12 +77,15 @@ const parseJsonBlock = <T>(raw: string): T | null => {
 };
 
 const parseLooselyStructuredResponse = (raw: string): Partial<AdaEvaluation> | null => {
-    const cleaned = raw.trim();
+    const cleaned = stripCodeFences(raw);
     if (!cleaned) return null;
 
     const responseMatch = cleaned.match(/"response"\s*:\s*"([\s\S]*?)"/i);
     const entityMatch = cleaned.match(/"entity"\s*:\s*"([\s\S]*?)"/i);
     const equationMatch = cleaned.match(/"equation"\s*:\s*"([\s\S]*?)"/i);
+    const correctnessMatch = cleaned.match(/"correctness"\s*:\s*([\d.]+)/i);
+    const misconceptionMatch = cleaned.match(/"misconception"\s*:\s*([\d.]+)/i);
+    const actionMatch = cleaned.match(/"action"\s*:\s*"(\w+)"/i);
 
     const hasJsonKeys = /"correctness"|"misconception"|"response"|"entity"/i.test(cleaned);
 
@@ -66,12 +93,15 @@ const parseLooselyStructuredResponse = (raw: string): Partial<AdaEvaluation> | n
         return {
             response: responseMatch?.[1]?.replace(/\\n/g, '\n').trim() || cleaned,
             entity: entityMatch?.[1]?.trim(),
-            equation: equationMatch?.[1]?.trim()
+            equation: equationMatch?.[1]?.trim(),
+            correctness: correctnessMatch ? parseFloat(correctnessMatch[1]) : undefined,
+            misconception: misconceptionMatch ? parseFloat(misconceptionMatch[1]) : undefined,
+            action: actionMatch?.[1]?.trim()
         };
     }
 
     return {
-        response: cleaned
+        response: cleanResponseText(cleaned)
     };
 };
 
@@ -136,6 +166,32 @@ const eli5Rewrite = (text: string, entity: string) => {
     return rewritten.startsWith('Simple take:') ? rewritten : `Simple take: ${rewritten}`;
 };
 
+const extractAIContent = (raw: string): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    // Handle OpenAI-compatible JSON response format
+    if (trimmed.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(trimmed);
+            // OpenAI format: { choices: [{ message: { content: "..." } }] }
+            if (parsed.choices?.[0]?.message?.content) {
+                return parsed.choices[0].message.content;
+            }
+            // Alternative format: { content: "..." }
+            if (typeof parsed.content === 'string') {
+                return parsed.content;
+            }
+            // Alternative format: { text: "..." }
+            if (typeof parsed.text === 'string') {
+                return parsed.text;
+            }
+        } catch {
+            // Not valid JSON at top level, return as-is
+        }
+    }
+    return trimmed;
+};
+
 const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => {
     const response = await fetch(POLLINATIONS_URL, {
         method: 'POST',
@@ -152,7 +208,8 @@ const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }
         throw new Error(`Free AI request failed: ${response.status}`);
     }
 
-    return response.text();
+    const raw = await response.text();
+    return extractAIContent(raw);
 };
 
 const Vec = {
@@ -219,19 +276,20 @@ export class AdaEngine {
             
             GOVERNANCE PROTOCOL:
             1. Evaluate the input for "Signal Dissonance" (Misconceptions).
-            2. If Misconception Probability is high, DO NOT stop or abstain. 
+            2. If Misconception Probability is high, DO NOT stop or abstain.
             3. BRIDGE THE GAP: Address the user's premise, explain the shift to the current 2026 reality, and solve the underlying semantic equation.
             4. If the user asks for synonyms or antonyms, or follows up on a previous point, use the SESSION HISTORY for context.
             5. For ELI5: Use simple, warm metaphors and clear language.
             6. For TECHNICAL: Use precise terminology and kinematic references.
-            
-            RESPONSE FORMAT (JSON):
+            7. ENTITY EXTRACTION: Preserve the FULL name including all titles, honorifics, suffixes (Jr., Sr., III, PhD, CEO, etc.), and hyphenated components. Never truncate or shorten names.
+
+            RESPONSE FORMAT (strict JSON, no code fences, no markdown):
             {
                 "correctness": [0-1],
                 "misconception": [0-1],
-                "entity": "Primary entity being discussed",
+                "entity": "Full name with all titles and suffixes preserved",
                 "equation": "e.g. capital(France) = Paris",
-                "response": "Your full response here, addressing misconceptions and solving the query.",
+                "response": "Your full response here, addressing misconceptions and solving the query. Plain text only, no markdown.",
                 "synonyms": ["list", "of", "relevant", "synonyms"],
                 "antonyms": ["list", "of", "relevant", "antonyms"],
                 "action": "RESPOND"
@@ -295,9 +353,10 @@ export class AdaEngine {
         for (let i = 0; i <= 20; i++) trajectoryPoints.push(bezier.evaluate(i / 20));
 
         const lexical = mergeLexicalCoverage(query, evalData.synonyms, evalData.antonyms);
+        const cleanedResponse = cleanResponseText(evalData.response);
         const governedResponse = complexity === 'ELI5'
-            ? eli5Rewrite(evalData.response, evalData.entity)
-            : evalData.response;
+            ? eli5Rewrite(cleanedResponse, evalData.entity)
+            : cleanedResponse;
 
         return {
             tier: 3,
@@ -306,7 +365,7 @@ export class AdaEngine {
             entity: evalData.entity,
             confidence: c,
             details: `Epistemic Resolution: ${state}. Complexity: ${complexity}.`,
-            geminiInsight: governedResponse,
+            insight: governedResponse,
             lexical: {
                 synonyms: lexical.synonyms,
                 antonyms: lexical.antonyms,

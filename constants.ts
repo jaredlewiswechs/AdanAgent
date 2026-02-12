@@ -36,9 +36,9 @@ export const SEMANTIC_CLUSTERS: Record<string, Set<string>> = {
         "headquarters", "center", "city", "administrative"
     ]),
     "FOUNDER": new Set([
-        "founder", "found", "create", "created", "start", "started",
-        "build", "built", "establish", "originate", "begin", "began",
-        "commence", "launched", "creator", "father"
+        "founder", "found", "founded", "create", "created", "start", "started",
+        "build", "built", "establish", "established", "originate", "originated",
+        "begin", "began", "commence", "launched", "creator", "father", "cofounder"
     ]),
     "POPULATION": new Set([
         "population", "people", "inhabitants", "citizens",
