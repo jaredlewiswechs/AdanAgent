@@ -114,7 +114,6 @@ export const callFreeAI = async (
                     model: 'openai',
                     messages,
                     temperature: 0.2,
-                    private: false
                 }),
                 signal: controller.signal
             });
