@@ -35,16 +35,113 @@ const parseJsonBlock = <T>(raw: string): T | null => {
     }
 };
 
+const parseLooselyStructuredResponse = (raw: string): Partial<AdaEvaluation> | null => {
+    const cleaned = raw.trim();
+    if (!cleaned) return null;
+
+    const responseMatch = cleaned.match(/"response"\s*:\s*"([\s\S]*?)"/i);
+    const entityMatch = cleaned.match(/"entity"\s*:\s*"([\s\S]*?)"/i);
+    const equationMatch = cleaned.match(/"equation"\s*:\s*"([\s\S]*?)"/i);
+
+    const hasJsonKeys = /"correctness"|"misconception"|"response"|"entity"/i.test(cleaned);
+
+    if (hasJsonKeys) {
+        return {
+            response: responseMatch?.[1]?.replace(/\\n/g, '\n').trim() || cleaned,
+            entity: entityMatch?.[1]?.trim(),
+            equation: equationMatch?.[1]?.trim()
+        };
+    }
+
+    return {
+        response: cleaned
+    };
+};
+
+const deterministicCapitalMap: Record<string, string> = {
+    texas: 'Austin',
+    california: 'Sacramento',
+    florida: 'Tallahassee',
+    france: 'Paris',
+    germany: 'Berlin',
+    japan: 'Tokyo',
+    canada: 'Ottawa',
+    india: 'New Delhi',
+    australia: 'Canberra'
+};
+
+const buildDeterministicAnswer = (query: string): string => {
+    const cleaned = query.trim();
+    const lower = cleaned.toLowerCase();
+
+    const capitalMatch = lower.match(/capital of ([a-z\s]+)/i);
+    if (capitalMatch) {
+        const place = capitalMatch[1].replace(/[^a-z\s]/gi, '').trim();
+        const capital = deterministicCapitalMap[place];
+        if (capital) {
+            return `The capital of ${place.replace(/\b\w/g, c => c.toUpperCase())} is ${capital}.`;
+        }
+    }
+
+    const arithmeticMatch = cleaned.match(/(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)/);
+    if (arithmeticMatch) {
+        const a = Number(arithmeticMatch[1]);
+        const op = arithmeticMatch[2];
+        const b = Number(arithmeticMatch[3]);
+        const value = op === '+' ? a + b : op === '-' ? a - b : op === '*' ? a * b : (b === 0 ? null : a / b);
+        if (value !== null && Number.isFinite(value)) {
+            return `${a} ${op} ${b} = ${value}.`;
+        }
+    }
+
+    return `I interpreted your request as: "${cleaned}". I can provide a fuller answer when upstream model output is available.`;
+};
+
+
+const stripProviderNoise = (text: string): string => {
+    return text
+        .replace(/⚠️\s*\*\*IMPORTANT NOTICE\*\*[\s\S]*/gi, '')
+        .replace(/pollinations legacy text api is being deprecated[\s\S]*/gi, '')
+        .trim();
+};
+
+const resolveResponseText = (response: unknown, query: string): string => {
+    const raw = typeof response === 'string' ? stripProviderNoise(response) : '';
+    if (!raw) return buildDeterministicAnswer(query);
+
+    const lower = raw.toLowerCase();
+    if (lower.includes('important notice') || lower.includes('deprecated') || lower.includes('migrate to')) {
+        return buildDeterministicAnswer(query);
+    }
+
+    return raw;
+};
+
 const normalizeEvaluation = (result: Partial<AdaEvaluation>, query: string): AdaEvaluation => ({
     correctness: clamp(Number(result.correctness ?? 0.65)),
     misconception: clamp(Number(result.misconception ?? 0.2)),
     entity: String(result.entity ?? (query.slice(0, 48) || 'Signal')),
     equation: String(result.equation ?? `meaning("${query}") = contextual_resolution`),
-    response: String(result.response ?? 'I resolved your query using the available context.'),
+    response: resolveResponseText(result.response, query),
     synonyms: Array.isArray(result.synonyms) ? result.synonyms.slice(0, 8).map(String) : [],
     antonyms: Array.isArray(result.antonyms) ? result.antonyms.slice(0, 8).map(String) : [],
     action: String(result.action ?? 'RESPOND')
 });
+
+
+const unwrapProviderEnvelope = (raw: string): string => {
+    const cleaned = raw.trim();
+    const parsed = parseJsonBlock<any>(cleaned);
+    if (!parsed || typeof parsed !== 'object') return cleaned;
+
+    const content = parsed?.choices?.[0]?.message?.content;
+    if (typeof content === 'string' && content.trim()) return content.trim();
+
+    const direct = parsed?.response ?? parsed?.output_text ?? parsed?.text;
+    if (typeof direct === 'string' && direct.trim()) return direct.trim();
+
+    return cleaned;
+};
 
 const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => {
     const response = await fetch(POLLINATIONS_URL, {
@@ -157,8 +254,10 @@ export class AdaEngine {
                 },
                 { role: 'user', content: prompt }
             ]);
-            const parsed = parseJsonBlock<Partial<AdaEvaluation>>(evaluationResponse);
-            evalData = normalizeEvaluation(parsed ?? {}, query);
+            const unwrappedResponse = unwrapProviderEnvelope(evaluationResponse);
+            const parsed = parseJsonBlock<Partial<AdaEvaluation>>(unwrappedResponse);
+            const looselyParsed = parseLooselyStructuredResponse(unwrappedResponse);
+            evalData = normalizeEvaluation(parsed ?? looselyParsed ?? {}, query);
         } catch (error) {
             console.warn('Evaluation request failed, using deterministic fallback.', error);
             const fallbackMisconception = /who is|capital|president|prime minister|ceo|latest|current/i.test(query) ? 0.35 : 0.15;
@@ -167,7 +266,7 @@ export class AdaEngine {
                 misconception: fallbackMisconception,
                 entity: query.split(' ').slice(0, 3).join(' ') || 'Signal',
                 equation: `interpret("${query}") = practical_answer`,
-                response: `I could not reach the free AI service right now, but here's a best-effort answer: ${query}. Please retry for a richer grounded response.`,
+                response: `I could not reach the free AI service right now. ${buildDeterministicAnswer(query)}`,
                 action: 'RESPOND',
                 synonyms: [],
                 antonyms: []
