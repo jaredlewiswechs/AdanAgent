@@ -5,12 +5,30 @@
  */
 
 export const AI_CONFIG = {
-    pollinationsUrl: 'https://gen.pollinations.ai/v1/chat/completions',
+    /**
+     * Ordered list of endpoints to try. Each has a URL, whether it uses
+     * OpenAI-compatible JSON format, and the models to attempt on it.
+     */
+    endpoints: [
+        {
+            url: 'https://text.pollinations.ai/',
+            openaiFormat: true,
+            models: ['openai', 'mistral', 'openai-large'],
+        },
+        {
+            url: 'https://gen.pollinations.ai/v1/chat/completions',
+            openaiFormat: true,
+            models: ['openai', 'mistral'],
+        },
+    ] as const,
+
+    /** Simple GET-based fallback: text.pollinations.ai/{prompt} */
+    textFallbackUrl: 'https://text.pollinations.ai/',
 
     retry: {
-        maxRetries: 3,          // 4 total attempts (initial + 3 retries)
-        baseDelayMs: 1000,      // 1s, 2s, 4s backoff
-        timeoutMs: 15_000,      // 15s per-request timeout
+        maxRetries: 2,          // 3 total attempts per endpoint (initial + 2 retries)
+        baseDelayMs: 800,       // 0.8s, 1.6s backoff
+        timeoutMs: 20_000,      // 20s per-request timeout
     },
 
     cache: {
