@@ -1,11 +1,31 @@
 
-import { GoogleGenAI } from "@google/genai";
 import { 
     Glyph, AnalysisResult, MechanicalStats, 
     SearchResult, QueryShape, PhysicalProperty,
     CognitiveState, ConstraintStatus, Action, Vector
 } from '../types';
 import { GLYPH_DB, SEMANTIC_CLUSTERS } from '../constants';
+
+const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
+
+const callFreeAI = async (messages: { role: 'system' | 'user'; content: string }[]): Promise<string> => {
+    const response = await fetch(POLLINATIONS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: 'openai',
+            messages,
+            temperature: 0.2,
+            private: false
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(`Free AI request failed: ${response.status}`);
+    }
+
+    return response.text();
+};
 
 export class WordMechanics {
     static analyze(word: string): AnalysisResult {
@@ -129,27 +149,22 @@ export class KinematicEngine {
     }
 
     private async matchTier3(query: string): Promise<SearchResult> {
-        // Correct initialization: Create a new instance right before making the API call
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
         try {
-            const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: `Analyze this query using Kinematic Semantics: "${query}". 
-                Extract the primary 'Entity' and the 'Query Shape' (e.g. population_of, law_of, etc.). 
-                Provide a short 'Kinematic Insight' explaining why this query has this specific shape.`,
-                config: {
-                    systemInstruction: "You are a Kinematic Semantics expert. You treat language as geometry. Your output should be structured to resolve incomplete semantic equations.",
+            const text = await callFreeAI([
+                {
+                    role: 'system',
+                    content: 'You are a Kinematic Semantics expert. Keep responses brief and concrete.'
+                },
+                {
+                    role: 'user',
+                    content: `Analyze this query using Kinematic Semantics: "${query}". Extract the primary entity and query shape, then provide a short kinematic insight.`
                 }
-            });
-
-            // Using response.text getter directly
-            const text = response.text || "Structural dissonance detected.";
+            ]);
             
             // Fix: Added missing required SearchResult properties
             return {
                 tier: 3,
-                method: "Gemini Latent Resonance",
+                method: "Free-AI Latent Resonance",
                 shape: QueryShape.UNKNOWN,
                 entity: "Resolved via LLM",
                 confidence: 0.85,
