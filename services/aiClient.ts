@@ -200,10 +200,18 @@ const tryGetFallback = async (
     messages: AIMessage[],
     signal: AbortSignal
 ): Promise<string> => {
-    // Build a single prompt from the messages
-    const combined = messages
+    // Build a single prompt from the messages, using only the last user
+    // message when the full prompt would exceed safe URL length limits.
+    const MAX_PROMPT_CHARS = 1200;
+    let combined = messages
         .map(m => m.role === 'system' ? `[System]: ${m.content}` : m.content)
         .join('\n\n');
+
+    if (combined.length > MAX_PROMPT_CHARS) {
+        // Fall back to just the last user message to stay within URL limits
+        const lastUser = [...messages].reverse().find(m => m.role === 'user');
+        combined = lastUser ? lastUser.content.slice(0, MAX_PROMPT_CHARS) : combined.slice(0, MAX_PROMPT_CHARS);
+    }
 
     const encoded = encodeURIComponent(combined);
     const url = `${AI_CONFIG.textFallbackUrl}${encoded}?model=mistral&json=true`;
