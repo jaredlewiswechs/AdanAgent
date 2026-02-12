@@ -1,7 +1,8 @@
 
 import {
     Scalar, Vector, CognitiveState, ConstraintStatus, Action,
-    SearchResult, PhysicalProperty, GroundingSource, ChatMessage
+    SearchResult, PhysicalProperty, GroundingSource, ChatMessage,
+    ProofLabel, LedgerStep
 } from '../types';
 import { WordMechanics } from './kinematicEngine';
 import { callFreeAI, AIRequestError } from './aiClient';
@@ -272,6 +273,16 @@ export class AdaEngine {
                 antonyms: []
             }, query);
         }
+        // --- LEDGER: Track every resolution step ---
+        const ledger: LedgerStep[] = [];
+        const ledgerStart = Date.now();
+        const addStep = (action: string, detail: string) => {
+            ledger.push({ step: ledger.length + 1, action, detail, timestamp: Date.now() - ledgerStart });
+        };
+
+        addStep('Parse Query', `Input: "${query}" | Complexity: ${complexity}`);
+        addStep('AI Evaluation', aiError ? `Fallback: ${aiError}` : `Correctness: ${evalData.correctness.toFixed(2)}, Misconception: ${evalData.misconception.toFixed(2)}`);
+
         const c = evalData.correctness;
         const m = evalData.misconception;
         const k = Math.max(c, m);
@@ -290,24 +301,39 @@ export class AdaEngine {
         else if (ratio > COGNITIVE_THRESHOLDS.ratioRedMin) status = ConstraintStatus.RED;
         else if (ratio >= COGNITIVE_THRESHOLDS.ratioYellowMin) status = ConstraintStatus.YELLOW;
 
+        addStep('Govern Constraints', `State: ${state} | Status: ${status} | Ratio: ${ratio.toFixed(2)}`);
+
         // KINEMATIC TRAJECTORY (Dynamic drag based on misconception)
         const mechanics = WordMechanics.analyze(evalData.entity || "Signal");
         const curvature = (mechanics.stats.flow + mechanics.stats.energy) / 10;
         const P0 = [0, 0];
         const P3 = [1, 1];
         // Misconception creates a "detour" in the trajectory
-        const P1 = [0.1 + (m * 0.4), 0.5 + (m * 0.8)]; 
+        const P1 = [0.1 + (m * 0.4), 0.5 + (m * 0.8)];
         const P2 = [0.9 - (m * 0.4), 0.5 - (m * 0.2)];
         const bezier = new BezierPrimitive(P0, P1, P2, P3);
         const trajectoryPoints: Vector[] = [];
         const samples = COGNITIVE_THRESHOLDS.trajectorySamples;
         for (let i = 0; i <= samples; i++) trajectoryPoints.push(bezier.evaluate(i / samples));
 
+        addStep('Map Glyphs', `Entity: "${evalData.entity}" | Profile: ${mechanics.profile} | Glyphs: ${mechanics.glyphs.map(g => g.char).join('')}`);
+
         const lexical = mergeLexicalCoverage(query, evalData.synonyms, evalData.antonyms);
         const cleanedResponse = cleanResponseText(evalData.response);
         const governedResponse = complexity === 'ELI5'
             ? eli5Rewrite(cleanedResponse, evalData.entity)
             : cleanedResponse;
+
+        // PROOF LABEL: Derive from governance metrics
+        let proofLabel = ProofLabel.LIKELY;
+        if (c >= COGNITIVE_THRESHOLDS.correctHigh && status === ConstraintStatus.GREEN && !aiError) {
+            proofLabel = ProofLabel.VERIFIED;
+        } else if (f > COGNITIVE_THRESHOLDS.fogHigh || state === CognitiveState.FOG || evalData.action === 'CLARIFY') {
+            proofLabel = ProofLabel.NEEDS_DATA;
+        }
+
+        addStep('Generate Response', `Proof: ${proofLabel} | Action: ${evalData.action}`);
+        addStep('Commit', `Governed response delivered. Trajectory closed: ${bezier.checkClosure()}`);
 
         return {
             tier: 3,
@@ -328,6 +354,9 @@ export class AdaEngine {
             trajectoryPoints,
             isClosed: bezier.checkClosure(),
             groundingSources: groundingSources.length > 0 ? groundingSources : undefined,
+            proofLabel,
+            ledger,
+            glyphAnalysis: mechanics,
             error: aiError
         };
     }

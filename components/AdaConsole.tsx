@@ -1,9 +1,32 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AdaEngine } from '../services/adaEngine';
-import { SearchResult, ConstraintStatus, Action, CognitiveState, ChatMessage } from '../types';
+import { SearchResult, ConstraintStatus, Action, CognitiveState, ChatMessage, ProofLabel, ShapeExport } from '../types';
+import { WordMechanics } from '../services/kinematicEngine';
 
 const engine = new AdaEngine();
+
+const PROOF_DISPLAY = {
+    [ProofLabel.VERIFIED]: { icon: '\u2705', label: 'Verified', desc: 'From input / defined facts', cls: 'bg-green-500/10 border-green-500/50 text-green-400' },
+    [ProofLabel.LIKELY]: { icon: '\uD83D\uDFE1', label: 'Likely', desc: 'Inference', cls: 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400' },
+    [ProofLabel.NEEDS_DATA]: { icon: '\u26D4', label: 'Needs Data', desc: 'Ask user for missing info', cls: 'bg-red-500/10 border-red-500/50 text-red-400' },
+};
+
+const buildShapeExport = (query: string, result: SearchResult): ShapeExport => {
+    const analysis = result.glyphAnalysis || WordMechanics.analyze(result.entity || 'Signal');
+    return {
+        query,
+        resolvedShape: result.shape,
+        confidence: result.confidence,
+        glyphsUsed: analysis.glyphs.map(g => g.char),
+        profileVector: analysis.stats,
+        solverMethod: result.method,
+        proofLabel: result.proofLabel,
+        cognitiveState: result.csv.state,
+        constraintStatus: result.constraint.status,
+        ledger: result.ledger,
+    };
+};
 
 const AdaConsole: React.FC = () => {
     const [input, setInput] = useState('');
@@ -11,6 +34,7 @@ const AdaConsole: React.FC = () => {
     const [chatLog, setChatLog] = useState<ChatMessage[]>([]);
     const [isThinking, setIsThinking] = useState(false);
     const [complexity, setComplexity] = useState<'ELI5' | 'STANDARD' | 'TECHNICAL'>('STANDARD');
+    const [openLedgerIdx, setOpenLedgerIdx] = useState<number | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -44,6 +68,8 @@ const AdaConsole: React.FC = () => {
                     constraint: { status: 'RED' as any, ratio: 0 },
                     action: 'ABSTAIN' as any,
                     trajectoryPoints: [[0, 0]], isClosed: false,
+                    proofLabel: ProofLabel.NEEDS_DATA,
+                    ledger: [{ step: 1, action: 'Error', detail: errMsg, timestamp: 0 }],
                     error: errMsg
                 }
             }]);
@@ -115,7 +141,14 @@ const AdaConsole: React.FC = () => {
                                             <span className="text-[10px] mono text-slate-500 mr-2 uppercase">Equation</span>
                                             <span className="text-cyan-400 font-bold mono text-sm">{item.result.lexical?.equation}</span>
                                         </div>
-                                        <div className="flex gap-2" role="status" aria-label={`Constraint: ${item.result.constraint?.status}, State: ${item.result.csv?.state}`}>
+                                        <div className="flex gap-2 items-center" role="status" aria-label={`Proof: ${item.result.proofLabel}, Constraint: ${item.result.constraint?.status}, State: ${item.result.csv?.state}`}>
+                                            {/* PROOF LABEL */}
+                                            {item.result.proofLabel && (
+                                                <span className={`text-[9px] font-bold tracking-widest px-2 py-0.5 rounded border ${PROOF_DISPLAY[item.result.proofLabel].cls}`} title={PROOF_DISPLAY[item.result.proofLabel].desc}>
+                                                    {PROOF_DISPLAY[item.result.proofLabel].icon}{' '}
+                                                    {PROOF_DISPLAY[item.result.proofLabel].label}
+                                                </span>
+                                            )}
                                             <span className={`text-[9px] font-bold tracking-widest px-2 py-0.5 rounded border ${
                                                 item.result.constraint?.status === ConstraintStatus.GREEN ? 'bg-green-500/10 border-green-500/50 text-green-400' :
                                                 item.result.constraint?.status === ConstraintStatus.RED ? 'bg-red-500/10 border-red-500/50 text-red-400' :
@@ -128,7 +161,7 @@ const AdaConsole: React.FC = () => {
                                             <span className="text-[9px] mono text-slate-500 uppercase py-0.5">{item.result.csv?.state}</span>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="text-slate-200 leading-relaxed mb-6 text-lg font-medium">
                                         {item.result.insight}
                                     </div>
@@ -179,6 +212,57 @@ const AdaConsole: React.FC = () => {
                                             </svg>
                                         </div>
                                     </div>
+
+                                    {/* LEDGER + EXPORT action row */}
+                                    <div className="flex items-center gap-3 pt-4 mt-4 border-t border-slate-800/50">
+                                        <button
+                                            onClick={() => setOpenLedgerIdx(openLedgerIdx === idx ? null : idx)}
+                                            className="text-[10px] mono uppercase tracking-widest px-3 py-1.5 rounded border border-slate-700 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-all flex items-center gap-1.5"
+                                            aria-expanded={openLedgerIdx === idx}
+                                            aria-label="Toggle resolution ledger"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                                            {openLedgerIdx === idx ? 'Hide Ledger' : 'Show Ledger'}
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const shape = buildShapeExport(item.query, item.result);
+                                                const blob = new Blob([JSON.stringify(shape, null, 2)], { type: 'application/json' });
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url;
+                                                a.download = `ada-shape-${Date.now()}.json`;
+                                                a.click();
+                                                URL.revokeObjectURL(url);
+                                            }}
+                                            className="text-[10px] mono uppercase tracking-widest px-3 py-1.5 rounded border border-slate-700 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-all flex items-center gap-1.5"
+                                            aria-label="Export shape object as JSON"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                            Export JSON
+                                        </button>
+                                    </div>
+
+                                    {/* LEDGER PANEL */}
+                                    {openLedgerIdx === idx && item.result.ledger && (
+                                        <div className="mt-4 p-4 bg-slate-950/60 border border-slate-800 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <h5 className="text-[9px] mono text-cyan-500 uppercase tracking-widest mb-3">Resolution Ledger</h5>
+                                            <div className="space-y-2">
+                                                {item.result.ledger.map((step) => (
+                                                    <div key={step.step} className="flex items-start gap-3">
+                                                        <div className="w-5 h-5 rounded-full bg-cyan-900/30 border border-cyan-500/30 flex items-center justify-center flex-shrink-0">
+                                                            <span className="text-[8px] mono text-cyan-400 font-bold">{step.step}</span>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className="text-[10px] mono text-cyan-400 font-bold uppercase">{step.action}</span>
+                                                            <p className="text-[10px] text-slate-400 mt-0.5 break-words">{step.detail}</p>
+                                                        </div>
+                                                        <span className="text-[8px] mono text-slate-600 flex-shrink-0">{step.timestamp}ms</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

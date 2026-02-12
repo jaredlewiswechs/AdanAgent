@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { KinematicEngine } from '../services/kinematicEngine';
-import { SearchResult, QueryShape } from '../types';
+import { SearchResult, QueryShape, ProofLabel } from '../types';
 
 const engine = new KinematicEngine();
 
@@ -77,11 +77,35 @@ const SemanticSolver: React.FC = () => {
                         <div>
                             <span className="text-[10px] text-slate-500 uppercase tracking-[0.3em]">Resolved Shape</span>
                             <h2 className="text-3xl font-black text-cyan-400 mono tracking-tighter uppercase">{result.shape === QueryShape.UNKNOWN ? 'Novel Topology' : result.shape}</h2>
+                            {result.shape === QueryShape.UNKNOWN && (
+                                <p className="text-[10px] text-slate-500 mt-1 italic">This query forms a new shape not seen in the known library.</p>
+                            )}
                         </div>
                         <div className="text-right">
                             <span className="text-[10px] text-slate-500 uppercase tracking-[0.3em]">Confidence</span>
                             <div className="text-2xl font-bold mono text-white">{(result.confidence * 100).toFixed(1)}%</div>
                         </div>
+                    </div>
+
+                    {/* Proof Label + Solver Branding */}
+                    <div className="flex flex-wrap gap-3 mb-8">
+                        {result.proofLabel && (
+                            <span className={`text-[10px] font-bold tracking-widest px-3 py-1 rounded border ${
+                                result.proofLabel === ProofLabel.VERIFIED ? 'bg-green-500/10 border-green-500/50 text-green-400' :
+                                result.proofLabel === ProofLabel.LIKELY ? 'bg-yellow-500/10 border-yellow-500/50 text-yellow-400' :
+                                'bg-red-500/10 border-red-500/50 text-red-400'
+                            }`}>
+                                {result.proofLabel === ProofLabel.VERIFIED ? '\u2705 Verified' :
+                                 result.proofLabel === ProofLabel.LIKELY ? '\uD83D\uDFE1 Likely' :
+                                 '\u26D4 Needs Data'}
+                            </span>
+                        )}
+                        {result.tier === 3 && (
+                            <div className="flex gap-2">
+                                <span className="text-[10px] px-2 py-1 rounded border border-orange-500/30 bg-orange-500/5 text-orange-400 tracking-wider">Translator: LLM (untrusted)</span>
+                                <span className="text-[10px] px-2 py-1 rounded border border-green-500/30 bg-green-500/5 text-green-400 tracking-wider">Governor: Newton (trusted)</span>
+                            </div>
+                        )}
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-8 mb-8">
