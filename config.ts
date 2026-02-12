@@ -18,19 +18,35 @@ export const AI_CONFIG = {
     /**
      * Fallback endpoints (Pollinations) — used only when Puter.js is
      * unavailable or all Puter models fail.
-     * NOTE: text.pollinations.ai is NOT an OpenAI-compatible endpoint —
-     * only gen.pollinations.ai/v1/chat/completions accepts chat format.
+     *
+     * In dev mode, requests are proxied through the Vite dev server
+     * (see vite.config.ts) to bypass browser CORS and proxy/firewall
+     * restrictions. The proxied path /api/ai/pollinations/* forwards
+     * to gen.pollinations.ai/*.
      */
     endpoints: [
         {
-            url: 'https://gen.pollinations.ai/v1/chat/completions',
+            url: '/api/ai/pollinations/v1/chat/completions',
             openaiFormat: true,
             models: ['openai', 'mistral', 'openai-large'],
         },
     ] as const,
 
-    /** Simple GET-based fallback: gen.pollinations.ai/text/{prompt} */
-    textFallbackUrl: 'https://gen.pollinations.ai/text/',
+    /**
+     * Direct (non-proxied) endpoints used as last-resort fallback
+     * if the proxied endpoints also fail (e.g. in production builds
+     * without the Vite proxy).
+     */
+    directEndpoints: [
+        {
+            url: 'https://gen.pollinations.ai/v1/chat/completions',
+            openaiFormat: true,
+            models: ['openai', 'mistral'],
+        },
+    ] as const,
+
+    /** GET-based fallback: proxied through Vite dev server */
+    textFallbackUrl: '/api/ai/pollinations/text/',
 
     retry: {
         maxRetries: 3,          // 4 total attempts per endpoint (initial + 3 retries)
