@@ -18,27 +18,24 @@ export const AI_CONFIG = {
     /**
      * Fallback endpoints (Pollinations) — used only when Puter.js is
      * unavailable or all Puter models fail.
+     * NOTE: text.pollinations.ai is NOT an OpenAI-compatible endpoint —
+     * only gen.pollinations.ai/v1/chat/completions accepts chat format.
      */
     endpoints: [
         {
-            url: 'https://text.pollinations.ai/',
+            url: 'https://gen.pollinations.ai/v1/chat/completions',
             openaiFormat: true,
             models: ['openai', 'mistral', 'openai-large'],
         },
-        {
-            url: 'https://gen.pollinations.ai/v1/chat/completions',
-            openaiFormat: true,
-            models: ['openai', 'mistral'],
-        },
     ] as const,
 
-    /** Simple GET-based fallback: text.pollinations.ai/{prompt} */
-    textFallbackUrl: 'https://text.pollinations.ai/',
+    /** Simple GET-based fallback: gen.pollinations.ai/text/{prompt} */
+    textFallbackUrl: 'https://gen.pollinations.ai/text/',
 
     retry: {
-        maxRetries: 2,          // 3 total attempts per endpoint (initial + 2 retries)
-        baseDelayMs: 800,       // 0.8s, 1.6s backoff
-        timeoutMs: 20_000,      // 20s per-request timeout
+        maxRetries: 3,          // 4 total attempts per endpoint (initial + 3 retries)
+        baseDelayMs: 1200,      // 1.2s, 2.4s, 4.8s backoff
+        timeoutMs: 30_000,      // 30s per-request timeout
     },
 
     cache: {

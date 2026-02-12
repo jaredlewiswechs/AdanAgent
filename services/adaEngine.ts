@@ -266,7 +266,7 @@ export class AdaEngine {
                 misconception: fallbackMisconception,
                 entity: fallbackEntity,
                 equation: `interpret("${fallbackEntity}") = contextual_resolution`,
-                response: `The AI service is temporarily unavailable. Your query about "${fallbackEntity}" was received. Please try again in a moment — the free AI providers may be rate-limited or briefly offline.`,
+                response: `I wasn't able to reach the AI service to fully answer your query about "${fallbackEntity}". This is usually caused by temporary rate limits on the free providers. Your query has been processed with local evaluation. Please try again shortly for a complete AI-powered response.`,
                 action: 'RESPOND',
                 synonyms: [],
                 antonyms: []
