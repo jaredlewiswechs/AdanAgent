@@ -4,6 +4,7 @@ import GlyphLab from './components/GlyphLab';
 import WordMechanic from './components/WordMechanic';
 import SemanticSolver from './components/SemanticSolver';
 import AdaConsole from './components/AdaConsole';
+import ThemeToggle from './components/ThemeToggle';
 
 const App: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'ada' | 'glyphs' | 'mechanics' | 'semantics'>('ada');
@@ -60,6 +61,9 @@ const App: React.FC = () => {
                             </button>
                         ))}
                     </nav>
+                    <div className="flex items-center">
+                        <ThemeToggle />
+                    </div>
                 </div>
             </header>
 
