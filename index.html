@@ -79,6 +79,22 @@
                 linear-gradient(90deg, rgba(2,6,23,0.04) 1px, transparent 1px);
             background-size: 20px 20px;
         }
+        /* Stronger content text colors in light theme for accessibility */
+        html[data-theme="light"] .glass-panel,
+        html[data-theme="light"] .glass-panel * {
+            color: #0f172a !important;
+        }
+        html[data-theme="light"] .glass-panel .text-slate-200 {
+            color: #0f172a !important;
+            opacity: 1 !important;
+        }
+        html[data-theme="light"] .text-slate-300 { color: #475569 !important; }
+        html[data-theme="light"] .text-slate-400 { color: #64748b !important; }
+        html[data-theme="light"] .text-slate-500 { color: #334155 !important; }
+        html[data-theme="light"] .mono { color: #0f172a !important; }
+        html[data-theme="light"] .bg-red-900\/10 { background-color: rgba(254, 226, 226, 0.7) !important; }
+        html[data-theme="light"] .bg-slate-800\/50 { background-color: rgba(100, 116, 139, 0.12) !important; }
+        html[data-theme="light"] .glass-panel .text-lg { color: #0f172a !important; }
         /* Improve input contrast in light theme (placeholder, text, and inner shadow) */
         html[data-theme="light"] input#ada-input {
             color: #0f172a !important;
