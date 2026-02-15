@@ -27,18 +27,23 @@ const ThemeToggle: React.FC = () => {
 
     return (
         <button
-            aria-label="Toggle theme"
+            aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
             onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
-            className="ml-3 px-3 py-1 rounded text-sm transition-colors bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200"
+            className="touch-target ml-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-spring bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/50 text-slate-300"
         >
             {theme === 'dark' ? (
-                <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m8.66-11.66l-.7.7M4.04 19.96l-.7.7M21 12h1M2 12H1m3.7 5.7l-.7-.7M19.96 4.04l-.7-.7"/></svg>
+                <span className="flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="5" />
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                    </svg>
                     Light
                 </span>
             ) : (
-                <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                <span className="flex items-center gap-1.5">
+                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+                    </svg>
                     Dark
                 </span>
             )}

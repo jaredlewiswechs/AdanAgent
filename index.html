@@ -3,113 +3,332 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Kinematic Engine v1.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://js.puter.com/v2/"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* ─── Apple HIG 2025/26 Foundation ─── */
+        *,
+        *::before,
+        *::after {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+        }
+
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
             background-color: #020617;
             color: #f8fafc;
             overflow-x: hidden;
+            overscroll-behavior-x: none;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
-        .mono { font-family: 'JetBrains Mono', monospace; }
+
+        .mono { font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace; }
+
+        /* ─── Blueprint Grid (subtle) ─── */
         .blueprint-grid {
-            background-image: 
-                linear-gradient(rgba(30, 58, 138, 0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(30, 58, 138, 0.1) 1px, transparent 1px);
-            background-size: 20px 20px;
+            background-image:
+                linear-gradient(rgba(30, 58, 138, 0.06) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(30, 58, 138, 0.06) 1px, transparent 1px);
+            background-size: 24px 24px;
         }
-        .glow-cyan { text-shadow: 0 0 10px rgba(34, 211, 238, 0.5); }
+
+        /* ─── Glow & Glass (refined materials) ─── */
+        .glow-cyan { text-shadow: 0 0 12px rgba(34, 211, 238, 0.35); }
+
         .glass-panel {
+            background: rgba(15, 23, 42, 0.55);
+            backdrop-filter: blur(20px) saturate(1.8);
+            -webkit-backdrop-filter: blur(20px) saturate(1.8);
+            border: 1px solid rgba(51, 65, 85, 0.35);
+            border-radius: 16px;
+        }
+
+        /* ─── Scrollbar (thin, unobtrusive) ─── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(51, 65, 85, 0.5); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(71, 85, 105, 0.7); }
+
+        /* Firefox scrollbar */
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(51, 65, 85, 0.5) transparent;
+        }
+
+        /* ─── Scroll Containers (mobile + web fixes) ─── */
+        .scroll-container {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-y: contain;
+            scroll-behavior: smooth;
+        }
+
+        /* ─── Full-height fix (mobile safari, chrome) ─── */
+        .h-screen-safe {
+            height: 100vh;
+            height: 100dvh;
+        }
+
+        .min-h-screen-safe {
+            min-height: 100vh;
+            min-height: 100dvh;
+        }
+
+        /* ─── Segmented Control (Apple-style) ─── */
+        .segmented-control {
+            display: inline-flex;
             background: rgba(15, 23, 42, 0.6);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(51, 65, 85, 0.5);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 10px;
+            padding: 3px;
+            gap: 2px;
         }
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
-        /* Light theme overrides when html[data-theme="light"] is set */
+
+        .segmented-control button {
+            position: relative;
+            padding: 7px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            color: rgba(148, 163, 184, 0.8);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            white-space: nowrap;
+        }
+
+        .segmented-control button:hover {
+            color: rgba(203, 213, 225, 0.9);
+        }
+
+        .segmented-control button[aria-selected="true"] {
+            background: rgba(6, 182, 212, 0.9);
+            color: #022;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+        }
+
+        /* ─── Card elevation system ─── */
+        .card-elevated {
+            box-shadow:
+                0 1px 3px rgba(0, 0, 0, 0.12),
+                0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .card-elevated-lg {
+            box-shadow:
+                0 2px 8px rgba(0, 0, 0, 0.15),
+                0 8px 32px rgba(0, 0, 0, 0.12);
+        }
+
+        /* ─── Smooth transitions ─── */
+        .transition-spring {
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* ─── Input styling (Apple-like) ─── */
+        .input-hig {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(51, 65, 85, 0.4);
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 16px; /* prevents iOS zoom */
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .input-hig:focus {
+            border-color: rgba(6, 182, 212, 0.5);
+            box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.1);
+            outline: none;
+        }
+
+        /* ─── Badge / pill ─── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 10px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+
+        /* ─── Safe area padding for notched devices ─── */
+        .safe-area-bottom {
+            padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+
+        .safe-area-top {
+            padding-top: env(safe-area-inset-top, 0);
+        }
+
+        /* ─── Touch targets (44pt minimum per HIG) ─── */
+        .touch-target {
+            min-width: 44px;
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ─── Prevent content shift on scrollbar appearance ─── */
+        .stable-scrollbar {
+            scrollbar-gutter: stable;
+        }
+
+        /* ═══════════════════════════════════════
+           LIGHT THEME
+           ═══════════════════════════════════════ */
         html[data-theme="light"] body {
-            background-color: #f8fafc;
-            color: #0f172a;
+            background-color: #f2f2f7; /* Apple system gray 6 */
+            color: #1c1c1e;
         }
-        html[data-theme="light"] .glass-panel {
-            background: rgba(255, 255, 255, 0.85);
-            border: 1px solid rgba(2,6,23,0.06);
-        }
-        html[data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
-        html[data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
-        /* Additional high-contrast adjustments for light mode */
-        html[data-theme="light"] header {
-            background-color: #eef2f7 !important;
-            border-color: #e2e8f0 !important;
-            color: #0f172a !important;
-        }
-        html[data-theme="light"] nav {
-            background-color: rgba(255,255,255,0.85) !important;
-            border-color: #e2e8f0 !important;
-        }
-        html[data-theme="light"] nav button {
-            color: #334155 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-        }
-        html[data-theme="light"] nav button[aria-selected="true"] {
-            background-color: #06b6d4 !important;
-            color: #022 !important;
-            box-shadow: 0 8px 24px rgba(6,182,212,0.12) !important;
-        }
-        html[data-theme="light"] .glass-panel {
-            background: rgba(255,255,255,0.95) !important;
-            border: 1px solid rgba(2,6,23,0.06) !important;
-            color: #0f172a !important;
-        }
-        html[data-theme="light"] .text-slate-500 { color: #475569 !important; }
-        html[data-theme="light"] .text-slate-600 { color: #64748b !important; }
-        html[data-theme="light"] .text-slate-700 { color: #334155 !important; }
-        html[data-theme="light"] .bg-slate-950 { background-color: #e6eef8 !important; color: #0f172a !important; }
-        html[data-theme="light"] .border-slate-800 { border-color: #e2e8f0 !important; }
+
         html[data-theme="light"] .blueprint-grid {
             background-image:
-                linear-gradient(rgba(2,6,23,0.04) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(2,6,23,0.04) 1px, transparent 1px);
-            background-size: 20px 20px;
+                linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+            background-size: 24px 24px;
         }
-        /* Stronger content text colors in light theme for accessibility */
+
+        html[data-theme="light"] .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px) saturate(1.8);
+            -webkit-backdrop-filter: blur(20px) saturate(1.8);
+            border: 1px solid rgba(0, 0, 0, 0.06);
+        }
+
+        html[data-theme="light"] .segmented-control {
+            background: rgba(0, 0, 0, 0.06);
+        }
+
+        html[data-theme="light"] .segmented-control button {
+            color: rgba(60, 60, 67, 0.6);
+        }
+
+        html[data-theme="light"] .segmented-control button:hover {
+            color: rgba(60, 60, 67, 0.8);
+        }
+
+        html[data-theme="light"] .segmented-control button[aria-selected="true"] {
+            background: rgba(6, 182, 212, 0.9);
+            color: #022;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        html[data-theme="light"] header {
+            background-color: rgba(242, 242, 247, 0.85) !important;
+            backdrop-filter: blur(20px) saturate(1.8) !important;
+            -webkit-backdrop-filter: blur(20px) saturate(1.8) !important;
+            border-color: rgba(0, 0, 0, 0.08) !important;
+            color: #1c1c1e !important;
+        }
+
+        html[data-theme="light"] .input-hig {
+            background: rgba(255, 255, 255, 0.6);
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        html[data-theme="light"] ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.15);
+        }
+
+        /* Light theme text overrides */
         html[data-theme="light"] .glass-panel,
         html[data-theme="light"] .glass-panel * {
-            color: #0f172a !important;
+            color: #1c1c1e !important;
         }
-        html[data-theme="light"] .glass-panel .text-slate-200 {
-            color: #0f172a !important;
-            opacity: 1 !important;
+        html[data-theme="light"] .glass-panel .text-cyan-400 {
+            color: #0891b2 !important;
         }
-        html[data-theme="light"] .text-slate-300 { color: #475569 !important; }
-        html[data-theme="light"] .text-slate-400 { color: #64748b !important; }
-        html[data-theme="light"] .text-slate-500 { color: #334155 !important; }
-        html[data-theme="light"] .mono { color: #0f172a !important; }
-        html[data-theme="light"] .bg-red-900\/10 { background-color: rgba(254, 226, 226, 0.7) !important; }
-        html[data-theme="light"] .bg-slate-800\/50 { background-color: rgba(100, 116, 139, 0.12) !important; }
-        html[data-theme="light"] .glass-panel .text-lg { color: #0f172a !important; }
-        /* Improve input contrast in light theme (placeholder, text, and inner shadow) */
-        html[data-theme="light"] input#ada-input {
-            color: #0f172a !important;
-            background-color: transparent !important;
-            caret-color: #0f172a !important;
+        html[data-theme="light"] .glass-panel .text-cyan-500 {
+            color: #0891b2 !important;
         }
-        html[data-theme="light"] input#ada-input::placeholder {
-            color: #475569 !important;
-            opacity: 1 !important;
+        html[data-theme="light"] .text-slate-200 { color: #1c1c1e !important; }
+        html[data-theme="light"] .text-slate-300 { color: #3a3a3c !important; }
+        html[data-theme="light"] .text-slate-400 { color: #636366 !important; }
+        html[data-theme="light"] .text-slate-500 { color: #636366 !important; }
+        html[data-theme="light"] .text-slate-600 { color: #8e8e93 !important; }
+        html[data-theme="light"] .text-slate-700 { color: #3a3a3c !important; }
+        html[data-theme="light"] .text-slate-800 { color: #1c1c1e !important; }
+        html[data-theme="light"] .bg-slate-950 { background-color: rgba(0,0,0,0.04) !important; color: #1c1c1e !important; }
+        html[data-theme="light"] .bg-slate-900\/50,
+        html[data-theme="light"] .bg-slate-900\/40,
+        html[data-theme="light"] .bg-slate-900\/60 { background-color: rgba(0,0,0,0.04) !important; }
+        html[data-theme="light"] .border-slate-800 { border-color: rgba(0,0,0,0.08) !important; }
+        html[data-theme="light"] .border-slate-900 { border-color: rgba(0,0,0,0.06) !important; }
+        html[data-theme="light"] .border-slate-700 { border-color: rgba(0,0,0,0.1) !important; }
+        html[data-theme="light"] .mono { color: #1c1c1e !important; }
+        html[data-theme="light"] .bg-red-900\/10 { background-color: rgba(255, 59, 48, 0.08) !important; }
+        html[data-theme="light"] .bg-slate-800\/50 { background-color: rgba(0,0,0,0.04) !important; }
+        html[data-theme="light"] .card-elevated {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
         }
-        html[data-theme="light"] .glass-panel.p-2 input#ada-input {
-            padding-left: 1.5rem !important;
-            padding-right: 1rem !important;
-            box-shadow: inset 0 2px 8px rgba(2,6,23,0.04) !important;
-            border-radius: 9999px !important;
+
+        /* Light theme input */
+        html[data-theme="light"] input#ada-input,
+        html[data-theme="light"] input#solver-input {
+            color: #1c1c1e !important;
+            caret-color: #0891b2 !important;
+        }
+        html[data-theme="light"] input::placeholder {
+            color: rgba(60, 60, 67, 0.3) !important;
+        }
+
+        /* ─── Animations (spring-like) ─── */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.96); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .animate-fade-in-up {
+            animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+        }
+
+        .animate-scale-in {
+            animation: scaleIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+        }
+
+        /* Staggered children */
+        .stagger > *:nth-child(1) { animation-delay: 0ms; }
+        .stagger > *:nth-child(2) { animation-delay: 50ms; }
+        .stagger > *:nth-child(3) { animation-delay: 100ms; }
+        .stagger > *:nth-child(4) { animation-delay: 150ms; }
+        .stagger > *:nth-child(5) { animation-delay: 200ms; }
+
+        /* ─── Prevent pull-to-refresh on mobile (for scroll containers) ─── */
+        .no-overscroll {
+            overscroll-behavior: none;
+        }
+
+        /* ─── iOS rubber band containment ─── */
+        @supports (-webkit-touch-callout: none) {
+            .scroll-container {
+                -webkit-overflow-scrolling: touch;
+            }
         }
     </style>
 <script type="importmap">
@@ -123,7 +342,7 @@
 }
 </script>
 </head>
-<body class="blueprint-grid min-h-screen">
+<body class="blueprint-grid min-h-screen-safe no-overscroll">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>
