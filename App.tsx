@@ -26,7 +26,7 @@ const App: React.FC = () => {
     }, [activeTab]);
 
     return (
-        <div className="min-h-screen-safe flex flex-col">
+        <div className="h-screen-safe flex flex-col overflow-hidden">
             {/* Header — frosted navigation bar */}
             <header className="border-b border-slate-800/50 bg-slate-950/70 backdrop-blur-xl sticky top-0 z-50 safe-area-top">
                 <div className="container mx-auto flex flex-col md:flex-row justify-between items-center gap-3 px-5 py-3">
@@ -65,8 +65,8 @@ const App: React.FC = () => {
             </header>
 
             {/* Main Content */}
-            <main className="container mx-auto flex-1 px-4 py-6 md:py-8">
-                {activeTab === 'ada' && <div id="panel-ada" role="tabpanel" aria-label="Ada Console"><AdaConsole /></div>}
+            <main className="container mx-auto flex-1 px-4 py-6 md:py-8 overflow-hidden min-h-0">
+                {activeTab === 'ada' && <div id="panel-ada" role="tabpanel" aria-label="Ada Console" className="h-full"><AdaConsole /></div>}
                 {activeTab === 'glyphs' && <div id="panel-glyphs" role="tabpanel" aria-label="Glyph Lab"><GlyphLab /></div>}
                 {activeTab === 'mechanics' && <div id="panel-mechanics" role="tabpanel" aria-label="Word Mechanic"><WordMechanic /></div>}
                 {activeTab === 'semantics' && <div id="panel-semantics" role="tabpanel" aria-label="Semantic Solver"><SemanticSolver /></div>}

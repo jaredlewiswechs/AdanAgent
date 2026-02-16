@@ -35,11 +35,13 @@ const AdaConsole: React.FC = () => {
     const [isThinking, setIsThinking] = useState(false);
     const [complexity, setComplexity] = useState<'ELI5' | 'STANDARD' | 'TECHNICAL'>('STANDARD');
     const [openLedgerIdx, setOpenLedgerIdx] = useState<number | null>(null);
-    const bottomRef = useRef<HTMLDivElement>(null);
+    // bottomRef removed — scrolling is now handled via scrollRef.scrollTop
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
     }, [history, isThinking]);
 
     const handleSend = async () => {
@@ -79,7 +81,7 @@ const AdaConsole: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-160px)] h-[calc(100dvh-160px)] max-w-5xl mx-auto gap-4 animate-fade-in">
+        <div className="flex flex-col h-full max-w-5xl mx-auto gap-4 animate-fade-in">
             {/* Top Control Bar — Apple segmented style */}
             <div className="flex flex-wrap justify-between items-center glass-panel p-2 px-4 card-elevated" role="toolbar" aria-label="Complexity controls">
                 <div className="segmented-control" role="radiogroup" aria-label="Response complexity level">
@@ -286,7 +288,7 @@ const AdaConsole: React.FC = () => {
                         </div>
                     </div>
                 )}
-                <div ref={bottomRef} />
+                <div />
             </div>
 
             {/* Input — pill with glass material */}
